@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3adfc1d9e4200444d8a3b66d0d6b619d, type: 3}
+  m_Name: RookieSkills
+  m_EditorClassIdentifier: Assembly-CSharp::BeachVolley.Skills.SkillProfile
+  note: 'Rookie at city beginner training: never played before, shows up anyway.'
+  serve: 6
+  pass: 9
+  set: 5
+  attack: 7
+  block: 5
+  defense: 8
+  footwork: 10
+  awareness: 12
+  enjoyment: 10
