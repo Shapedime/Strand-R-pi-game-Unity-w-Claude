@@ -1,3 +1,4 @@
+using BeachVolley.Core;
 using BeachVolley.Court;
 using BeachVolley.Skills;
 using UnityEngine;
@@ -189,6 +190,12 @@ namespace BeachVolley.Player
         /// <summary>Set by the attack helper: a jump started now gets the full approach height.</summary>
         public bool AttackJumpBoost { get; set; }
 
+        /// <summary>Story cutscenes set this to stop walking and jumping without disabling the motor.</summary>
+        public bool InputLocked { get; set; }
+
+        /// <summary>Movement is relative to this transform's yaw (the story swaps in its room camera).</summary>
+        public Transform CameraTransform { get => cameraTransform; set => cameraTransform = value; }
+
         /// <summary>
         /// Attack helper, while airborne: steer so the feet arrive over <paramref name="feetTarget"/>
         /// in <paramref name="timeLeft"/> seconds and face <paramref name="face"/>. Null clears it.
@@ -254,7 +261,9 @@ namespace BeachVolley.Player
         {
             float dt = Time.deltaTime;
             float now = Time.time;
-            Vector2 input = Vector2.ClampMagnitude(moveAction.ReadValue<Vector2>(), 1f);
+            // Menus, dialogue and cutscenes hold the player still (gravity and dives still run).
+            bool locked = InputLocked || UiPointerGate.MenuOpen;
+            Vector2 input = locked ? Vector2.zero : Vector2.ClampMagnitude(moveAction.ReadValue<Vector2>(), 1f);
             MoveInput = input;
 
             bool grounded = controller.isGrounded;
@@ -265,7 +274,7 @@ namespace BeachVolley.Player
                 if (!wasGrounded && verticalVelocity < -hardLandingSpeed)
                     landingTimer = landingRecoveryTime;
             }
-            if (jumpAction.WasPressedThisFrame() && !IsDiving)
+            if (!locked && jumpAction.WasPressedThisFrame() && !IsDiving)
                 lastJumpPressedTime = now;
 
             if (IsDiving)

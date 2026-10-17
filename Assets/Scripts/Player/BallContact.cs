@@ -339,6 +339,17 @@ namespace BeachVolley.Player
         /// <summary>Raised when any hit plays the ball: (type, ball height at contact).</summary>
         public event Action<HitType, float> Played;
 
+        /// <summary>Raised with each graded touch: (type, quality 0..1). Story drills use it for praise.</summary>
+        public event Action<HitType, float> HitGraded;
+
+        /// <summary>
+        /// Story helper (1 = normal): widens the attack assist's reach, the spike/roll timing window
+        /// and the sweet spot, so a scripted "one more try" lands within a few attempts.
+        /// </summary>
+        public float AssistBoost { get; set; } = 1f;
+
+        public bool ShowControlsHint { get => showControlsHint; set => showControlsHint = value; }
+
         void Awake()
         {
             motor = GetComponent<PlayerMotor>();
@@ -505,6 +516,7 @@ namespace BeachVolley.Player
 
         void ShowTiming(float quality)
         {
+            HitGraded?.Invoke(swing, quality);
             if (!showTimingFeedback || !timingKnown) return;
             if (quality >= 0.9f) Say("Perfect!", new Color(1f, 0.85f, 0.25f));
             else if (quality >= 0.5f) Say("Good", Color.white);
@@ -554,8 +566,8 @@ namespace BeachVolley.Player
             float q = AttackQuality(SkillType.Attack, localSweet);
             if (!attackPressKnown) return q;
             float scale = SkillScale(SkillType.Attack, 1f, windowScaleAtMax);
-            float perfect = attackTimingWindow.x * scale;
-            float good = Mathf.Max(attackTimingWindow.y * scale, perfect + 0.01f);
+            float perfect = attackTimingWindow.x * scale * AssistBoost;
+            float good = Mathf.Max(attackTimingWindow.y * scale * AssistBoost, perfect + 0.01f);
             float e = Mathf.Abs(attackPressError);
             float timing = e <= perfect ? 1f : Mathf.Clamp01(1f - (e - perfect) / (good - perfect));
             if (timing < q)
@@ -614,7 +626,7 @@ namespace BeachVolley.Player
                         Vector3 meet = ball.PredictPositionAt(t);
                         Vector3 feet = meet - dir * spike.zoneCenter.z;
                         feet.y = y0;
-                        if (Flat2(feet - transform.position) <= assistReach)
+                        if (Flat2(feet - transform.position) <= assistReach * AssistBoost)
                         {
                             hasPlan = true;
                             planContactIn = t;
@@ -743,8 +755,8 @@ namespace BeachVolley.Player
             Vector3 sweet = transform.TransformPoint(localSweet);
             Vector3 d = ball.transform.position - sweet;
             float scale = SkillScale(skill, 1f, windowScaleAtMax);
-            float perfect = attackPerfectDistance * scale;
-            float good = Mathf.Max(attackGoodDistance * scale, perfect + 0.01f);
+            float perfect = attackPerfectDistance * scale * AssistBoost;
+            float good = Mathf.Max(attackGoodDistance * scale * AssistBoost, perfect + 0.01f);
             // Still above the sweet spot = the ball hasn't come down yet = early.
             timingError = d.y > 0f ? -1f : 1f;
             timingKnown = true;
@@ -837,7 +849,7 @@ namespace BeachVolley.Player
                 default:
                 {
                     HitSettings h = Settings(type);
-                    return InBox(h.zoneCenter, h.zoneSize);
+                    return InBox(h.zoneCenter, type == HitType.Spike ? h.zoneSize * AssistBoost : h.zoneSize);
                 }
             }
         }

@@ -422,7 +422,7 @@ namespace BeachVolley.EditorTools
         }
 
         /// <summary>Placeholder body, ~1.80 m tall, from primitives. Feet at y = 0, facing +Z. Returns arm pivots (L, R).</summary>
-        static Transform[] BuildBody(Transform root, float yOffset, Material tank, Material shorts, Materials mats)
+        internal static Transform[] BuildBody(Transform root, float yOffset, Material tank, Material shorts, Materials mats)
         {
             var armPivots = new Transform[2];
             var model = new GameObject("Model").transform;
@@ -634,7 +634,7 @@ namespace BeachVolley.EditorTools
             return root;
         }
 
-        static Transform Part(PrimitiveType type, string name, Transform parent, Vector3 pos, Vector3 scale, Material mat)
+        internal static Transform Part(PrimitiveType type, string name, Transform parent, Vector3 pos, Vector3 scale, Material mat)
         {
             var go = GameObject.CreatePrimitive(type);
             go.name = name;
@@ -648,7 +648,7 @@ namespace BeachVolley.EditorTools
 
         // ---------- Scene ----------
 
-        static Material BeachSky()
+        internal static Material BeachSky()
         {
             const string path = MaterialDir + "/BeachSky.mat";
             var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
@@ -769,7 +769,7 @@ namespace BeachVolley.EditorTools
 
         // ---------- Helpers ----------
 
-        static GameObject Instantiate(GameObject prefab, Transform parent, Vector3 pos, Quaternion rot)
+        internal static GameObject Instantiate(GameObject prefab, Transform parent, Vector3 pos, Quaternion rot)
         {
             var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
             go.transform.SetParent(parent, false);
@@ -784,7 +784,7 @@ namespace BeachVolley.EditorTools
             return prefab;
         }
 
-        static GameObject Box(string name, Transform parent, Vector3 pos, Vector3 size, Material mat, bool keepCollider = false)
+        internal static GameObject Box(string name, Transform parent, Vector3 pos, Vector3 size, Material mat, bool keepCollider = false)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
             go.name = name;
@@ -796,7 +796,7 @@ namespace BeachVolley.EditorTools
             return go;
         }
 
-        static void EnsureFolder(string path)
+        internal static void EnsureFolder(string path)
         {
             if (AssetDatabase.IsValidFolder(path)) return;
             int slash = path.LastIndexOf('/');
@@ -832,7 +832,7 @@ namespace BeachVolley.EditorTools
             }
         }
 
-        class Materials
+        internal class Materials
         {
             static readonly Color TankColor = new Color(0.97f, 0.27f, 0.18f);
 
@@ -989,7 +989,7 @@ namespace BeachVolley.EditorTools
                 return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
             }
 
-            static Material Lit(string name, Color color, float smoothness, float metallic = 0f)
+            internal static Material Lit(string name, Color color, float smoothness, float metallic = 0f)
             {
                 string path = $"{MaterialDir}/{name}.mat";
                 var mat = AssetDatabase.LoadAssetAtPath<Material>(path);

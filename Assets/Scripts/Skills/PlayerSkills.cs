@@ -8,7 +8,7 @@ namespace BeachVolley.Skills
     /// here (e.g. Footwork drives acceleration, Pass drives the bump window).
     /// XP turns into skill points one at a time, and a training session can raise each
     /// skill by at most <see cref="maxGainPerSession"/>; extra XP is banked, never dumped.
-    /// Not persisted yet: values live on the player for the play session.
+    /// Story mode saves and restores them through Export/Import (see StoryState).
     /// </summary>
     public class PlayerSkills : MonoBehaviour
     {
@@ -86,6 +86,22 @@ namespace BeachVolley.Skills
             float before = Enjoyment;
             Enjoyment = Mathf.Clamp(Enjoyment + amount, 0f, 100f);
             return Enjoyment - before;
+        }
+
+        /// <summary>Copies values, XP and enjoyment out (for the story save).</summary>
+        public void Export(out int[] valuesOut, out float[] xpOut, out float enjoyment)
+        {
+            valuesOut = (int[])values.Clone();
+            xpOut = (float[])xp.Clone();
+            enjoyment = Enjoyment;
+        }
+
+        /// <summary>Restores saved values; arrays of the wrong length are ignored.</summary>
+        public void Import(int[] valuesIn, float[] xpIn, float enjoyment)
+        {
+            if (valuesIn != null && valuesIn.Length == Count) Array.Copy(valuesIn, values, Count);
+            if (xpIn != null && xpIn.Length == Count) Array.Copy(xpIn, xp, Count);
+            if (enjoyment >= 0f) Enjoyment = Mathf.Clamp(enjoyment, 0f, 100f);
         }
 
         public void BeginSession()

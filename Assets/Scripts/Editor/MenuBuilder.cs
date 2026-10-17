@@ -46,12 +46,14 @@ namespace BeachVolley.EditorTools
             Debug.Log("[MenuBuilder] Main menu built into " + MenuScenePath);
         }
 
-        /// <summary>Main menu first (the game starts there), then the Beach court.</summary>
+        /// <summary>Main menu first (the game starts there), then the Beach court and the story scenes.</summary>
         public static void ApplyBuildScenes()
         {
             var scenes = new System.Collections.Generic.List<EditorBuildSettingsScene>();
             if (File.Exists(MenuScenePath)) scenes.Add(new EditorBuildSettingsScene(MenuScenePath, true));
             if (File.Exists(FoundationBuilder.ScenePath)) scenes.Add(new EditorBuildSettingsScene(FoundationBuilder.ScenePath, true));
+            if (File.Exists(StoryBuilder.HomeScenePath)) scenes.Add(new EditorBuildSettingsScene(StoryBuilder.HomeScenePath, true));
+            if (File.Exists(StoryBuilder.ClubScenePath)) scenes.Add(new EditorBuildSettingsScene(StoryBuilder.ClubScenePath, true));
             EditorBuildSettings.scenes = scenes.ToArray();
         }
 
