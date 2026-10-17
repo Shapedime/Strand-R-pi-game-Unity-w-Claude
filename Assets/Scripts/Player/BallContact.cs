@@ -85,6 +85,8 @@ namespace BeachVolley.Player
         [SerializeField] float attackPerfectDistance = 0.35f;
         [Tooltip("...and quality fades to zero at this distance.")]
         [SerializeField] float attackGoodDistance = 1f;
+        [Tooltip("Spike / roll press timing (s), like bump/set/dig: within x of the ideal press is perfect, fading to zero at y. Grows with Attack.")]
+        [SerializeField] Vector2 attackTimingWindow = new Vector2(0.06f, 0.2f);
 
         [Header("Attack helper")]
         [Tooltip("Assisted jump: in the air you're steered to the ball and LMB/F swings auto-time themselves.")]
@@ -256,6 +258,9 @@ namespace BeachVolley.Player
         Vector3 planFeet;
         HitType queuedSwing;
         float queuedAt;
+        // Spike / roll press timing: press time minus the ideal press time (− early, + late).
+        float attackPressError;
+        bool attackPressKnown;
         float cooldownUntil = float.NegativeInfinity;
         bool touchedThisSwing;
         // Timing of the current bump / set / dig: press time minus the ideal press time (− early, + late).
@@ -511,6 +516,7 @@ namespace BeachVolley.Player
         public void PressSpike()
         {
             if (motor.IsGrounded || motor.IsDiving) return;
+            MeasureAttackPress(spike.zoneCenter.y, spikeContactDelay);
             if (TryQueue(HitType.Spike, spikeContactDelay)) return;
             StartSwing(HitType.Spike, spike.activeWindow, spike.cooldown, faceBall: false, contactDelay: spikeContactDelay);
         }
@@ -519,8 +525,45 @@ namespace BeachVolley.Player
         public void PressRoll()
         {
             if (motor.IsDiving) return;
+            MeasureAttackPress(motor.IsGrounded ? set.zoneCenter.y : spike.zoneCenter.y, rollContactDelay);
             if (TryQueue(HitType.Roll, rollContactDelay)) return;
             StartSwing(HitType.Roll, roll.activeWindow, roll.cooldown, faceBall: motor.IsGrounded, contactDelay: rollContactDelay);
+        }
+
+        /// <summary>
+        /// Records how early or late a spike / roll press is: the ideal press is the swing's
+        /// <paramref name="contactDelay"/> before the ball reaches the hand (the attack plan's
+        /// contact, or the ball coming down through <paramref name="handHeight"/> without one).
+        /// </summary>
+        void MeasureAttackPress(float handHeight, float contactDelay)
+        {
+            attackPressKnown = false;
+            if (ball == null || ball.IsDead) return;
+            float untilContact = planContactIn;
+            if (!hasPlan && !ball.PredictTimeToHeight(transform.position.y + handHeight, 3f, out untilContact)) return;
+            attackPressError = contactDelay - untilContact;
+            attackPressKnown = true;
+        }
+
+        /// <summary>
+        /// Spike / roll touch quality: the press timing (same kind of window as bump/set/dig), capped by
+        /// how close the ball actually is to the sweet spot at contact.
+        /// </summary>
+        float AttackHitQuality(Vector3 localSweet)
+        {
+            float q = AttackQuality(SkillType.Attack, localSweet);
+            if (!attackPressKnown) return q;
+            float scale = SkillScale(SkillType.Attack, 1f, windowScaleAtMax);
+            float perfect = attackTimingWindow.x * scale;
+            float good = Mathf.Max(attackTimingWindow.y * scale, perfect + 0.01f);
+            float e = Mathf.Abs(attackPressError);
+            float timing = e <= perfect ? 1f : Mathf.Clamp01(1f - (e - perfect) / (good - perfect));
+            if (timing < q)
+            {
+                q = timing;
+                timingError = attackPressError;
+            }
+            return q;
         }
 
         // ---------- Attack helper ----------
@@ -824,8 +867,8 @@ namespace BeachVolley.Player
                 case HitType.Bump: Bump(TimingQuality(type)); break;
                 case HitType.Set: Set(TimingQuality(type)); break;
                 case HitType.Dive: Dig(TimingQuality(type)); break;
-                case HitType.Spike: Spike(AttackQuality(SkillType.Attack)); break;
-                case HitType.Roll: Roll(AttackQuality(SkillType.Attack, motor.IsGrounded ? set.zoneCenter : spike.zoneCenter)); break;
+                case HitType.Spike: Spike(AttackHitQuality(spike.zoneCenter)); break;
+                case HitType.Roll: Roll(AttackHitQuality(motor.IsGrounded ? set.zoneCenter : spike.zoneCenter)); break;
                 case HitType.Block: Block(); break;
             }
             // Only controlled passes count for the passing drill.
