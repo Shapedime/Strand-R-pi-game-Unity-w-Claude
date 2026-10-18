@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using BeachVolley.Player;
 using UnityEngine;
 
 namespace BeachVolley.Story
@@ -95,6 +96,25 @@ namespace BeachVolley.Story
 
         void Go(IEnumerator routine) => StartCoroutine(routine);
 
+        /// <summary>Plays the touch animation on whoever hits (if they're a StoryActor).</summary>
+        static void Hit(Transform who, HitType type)
+        {
+            var actor = who != null ? who.GetComponent<StoryActor>() : null;
+            if (actor != null) actor.Volley(type);
+        }
+
+        static void Act(Transform who, string gesture)
+        {
+            var actor = who != null ? who.GetComponent<StoryActor>() : null;
+            if (actor != null) actor.Gesture(gesture);
+        }
+
+        IEnumerator HitAfter(Transform who, HitType type, float delay)
+        {
+            yield return new WaitForSeconds(delay / tempo);
+            Hit(who, type);
+        }
+
         static Vector3 Hands(Transform who, float h) => who.localPosition + new Vector3(0f, h, 0f);
 
         // ---------- Idle rally ----------
@@ -111,8 +131,11 @@ namespace BeachVolley.Story
                 var team = side == 0 ? nearTeam : farTeam;
                 var other = side == 0 ? farTeam : nearTeam;
                 var partner = team.Length > 1 && team[0] == last ? team[1] : team[0];
+                Hit(last, HitType.Bump);
                 yield return Arc(Hands(last, 0.8f), Hands(partner, 2.1f), 4f, 1.2f);
                 var hitter = team.Length > 1 && partner == team[0] ? team[1] : last;
+                Hit(partner, HitType.Set);
+                Go(HitAfter(hitter, HitType.Spike, 0.7f));
                 yield return Arc(Hands(partner, 2.1f), Hands(hitter, 2.4f), 4.2f, 1.1f);
                 var receiver = other[rng.Next(other.Length)];
                 yield return Arc(Hands(hitter, 2.4f), Hands(receiver, 0.8f), 3.6f, 1.3f);
@@ -135,14 +158,19 @@ namespace BeachVolley.Story
 
             // Serve from behind the far baseline.
             server.localPosition = new Vector3(1.5f, 0f, 8.6f);
+            Hit(server, HitType.Spike);
+            yield return new WaitForSeconds(0.35f / tempo);
             yield return Arc(Hands(server, 2.3f), new Vector3(-1f, 0.9f, -5f), 5.5f, 1.5f);
             // Attacker passes, setter runs in.
             Go(Move(attacker, new Vector3(-1f, 0f, -5f), 0.3f));
             Go(Move(setter, new Vector3(0.3f, 0f, -1.6f), 0.9f));
+            Hit(attacker, HitType.Bump);
             yield return Arc(new Vector3(-1f, 0.9f, -5f), new Vector3(0.3f, 2.2f, -1.6f), 4.6f, 1.25f);
             // Set to the left; attacker approaches and jumps.
             Go(Move(attacker, new Vector3(-1.6f, 0f, -2.2f), 0.8f));
             Go(DelayedJump(attacker, 0.75f, 0.95f, 0.9f));
+            Hit(setter, HitType.Set);
+            Go(HitAfter(attacker, HitType.Spike, 0.85f));
             yield return Arc(new Vector3(0.3f, 2.2f, -1.6f), new Vector3(-1.4f, 3.2f, -0.9f), 5f, 1.25f);
             // The spike: straight down into the far court, defenders too late.
             Go(Move(farTeam[farTeam.Length - 1], new Vector3(2.6f, 0f, 3.5f), 0.4f));
@@ -153,6 +181,9 @@ namespace BeachVolley.Story
             // Celebration: they jump and meet in the middle.
             yield return new WaitForSeconds(0.3f / tempo);
             Go(Move(setter, new Vector3(-0.8f, 0f, -2.6f), 0.6f));
+            Act(attacker, "FistPump");
+            Act(setter, "Cheer");
+            foreach (var f in farTeam) Act(f, "HeadShake");
             for (int i = 0; i < 3; i++)
             {
                 Go(Jump(setter, 0.5f, 0.45f));
@@ -166,7 +197,7 @@ namespace BeachVolley.Story
             yield return Jump(who, height, duration);
         }
 
-        /// <summary>The club: the near attacker (Bence) gets a set and puts it away hard.</summary>
+        /// <summary>The club: the near attacker (Marlon) gets a set and puts it away hard.</summary>
         public IEnumerator PowerSpike()
         {
             StopLoop();
@@ -179,6 +210,8 @@ namespace BeachVolley.Story
             yield return new WaitForSeconds(0.4f);
             Go(Move(attacker, new Vector3(-1.4f, 0f, -1.9f), 0.9f));
             Go(DelayedJump(attacker, 0.8f, 1f, 0.9f));
+            Hit(setter, HitType.Set);
+            Go(HitAfter(attacker, HitType.Spike, 0.85f));
             yield return Arc(Hands(setter, 2.2f), new Vector3(-1.3f, 3.3f, -0.9f), 5f, 1.25f);
             yield return Arc(new Vector3(-1.3f, 3.3f, -0.9f), new Vector3(1.5f, 0.16f, 3.6f), 3.3f, 0.25f);
             yield return Arc(new Vector3(1.5f, 0.16f, 3.6f), new Vector3(2.4f, 0.16f, 5.4f), 0.9f, 0.5f);

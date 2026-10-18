@@ -28,6 +28,8 @@ namespace BeachVolley.Story
 
         protected PlayerMotor motor;
         protected PlayerSkills skills;
+        protected StoryActor playerActor;
+        readonly Dictionary<string, StoryActor> cast = new Dictionary<string, StoryActor>();
         protected bool cutscene = true;
 
         readonly Dictionary<string, CameraShot> shots = new Dictionary<string, CameraShot>();
@@ -44,7 +46,10 @@ namespace BeachVolley.Story
             {
                 motor = player.GetComponent<PlayerMotor>();
                 skills = player.GetComponent<PlayerSkills>();
+                playerActor = player.GetComponent<StoryActor>();
             }
+            foreach (var a in FindObjectsByType<StoryActor>(FindObjectsSortMode.None))
+                if (!string.IsNullOrEmpty(a.displayName)) cast[a.displayName] = a;
             foreach (var s in FindObjectsByType<CameraShot>(FindObjectsInactive.Include, FindObjectsSortMode.None))
                 shots[s.name.StartsWith("Shot_") ? s.name.Substring(5) : s.name] = s;
             interactAction = new InputAction("Interact", InputActionType.Button, "<Keyboard>/e");
@@ -61,6 +66,8 @@ namespace BeachVolley.Story
             Time.timeScale = 1f;
             // Skills carry across scenes and sessions through the story save.
             StoryState.ApplySkills(skills);
+            // Cutscenes are the default; gameplay sections switch the player back (EndActing).
+            if (playerActor != null) playerActor.BeginActing();
             yield return null;
             yield return Run();
         }
@@ -72,7 +79,24 @@ namespace BeachVolley.Story
 
         // ---------- Script helpers ----------
 
-        protected IEnumerator Say(string speaker, string text) => ui.Say(speaker, text);
+        /// <summary>A spoken line; the speaker (if they're in the scene) talks while the box is up.</summary>
+        protected IEnumerator Say(string speaker, string text)
+        {
+            var actor = Actor(speaker);
+            if (actor != null) actor.Talk(true);
+            yield return ui.Say(speaker, text);
+            if (actor != null) actor.Talk(false);
+        }
+
+        /// <summary>The actor for a dialogue name ("Coach Steve" → Steve, "You" → the player).</summary>
+        protected StoryActor Actor(string speaker)
+        {
+            if (string.IsNullOrEmpty(speaker)) return null;
+            if (cast.TryGetValue(speaker, out var a)) return a;
+            foreach (var kv in cast)
+                if (speaker.EndsWith(kv.Key)) return kv.Value;
+            return null;
+        }
         protected IEnumerator Think(string text) => ui.Think(text);
         protected IEnumerator Narrate(string text) => ui.Narrate(text);
         protected IEnumerator Choose(params string[] options) => ui.Choose(options);
@@ -146,6 +170,32 @@ namespace BeachVolley.Story
         }
 
         protected void PlaceAt(Transform spot) => PlaceAt(spot.position, spot.rotation);
+
+        /// <summary>
+        /// Sits the player down with his hips on <paramref name="seat"/> (the seat surface, facing
+        /// away from it). The controller and motor switch off so the bed or bench can't push him away.
+        /// </summary>
+        protected void SitPlayer(Vector3 seat, Quaternion facing)
+        {
+            if (motor != null) motor.enabled = false;
+            var cc = player.GetComponent<CharacterController>();
+            if (cc != null) cc.enabled = false;
+            player.SetPositionAndRotation(seat, facing);
+            if (playerActor != null) playerActor.Sit(true);
+        }
+
+        protected void SitPlayer(Transform seat) => SitPlayer(seat.position, seat.rotation);
+
+        /// <summary>Stands back up and steps forward off the seat, back under the motor's control.</summary>
+        protected IEnumerator StandPlayer(float stepForward = 0.45f)
+        {
+            if (playerActor != null) playerActor.Sit(false);
+            yield return new WaitForSeconds(1f);
+            Vector3 p = player.position + player.forward * stepForward;
+            p.y = 0f;
+            PlaceAt(p, player.rotation);
+            if (motor != null) motor.enabled = true;
+        }
 
         protected void SetFlag(string key, string value) => StoryState.SetFlag(key, value);
         protected string Flag(string key) => StoryState.Flag(key);

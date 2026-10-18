@@ -4,11 +4,13 @@ namespace BeachVolley.Story
 {
     /// <summary>
     /// A named camera position for cutscenes. Its transform is the camera pose; the director finds
-    /// shots by GameObject name ("Shot_TV", "Shot_Aron"...).
+    /// shots by GameObject name ("Shot_TV", "Shot_Steve"...).
     /// </summary>
     public class CameraShot : MonoBehaviour
     {
         public float fieldOfView = 50f;
+        [Tooltip("Handheld noise strength for this shot (0 = locked off, 1 = normal).")]
+        public float shake = 1f;
 
         void OnDrawGizmos()
         {

@@ -18,7 +18,8 @@ namespace BeachVolley.EditorTools
     /// </summary>
     public static class MixamoSetup
     {
-        public const string RiggedModelPath = "Assets/Models/Mixamo/KareszPlayer_Rigged.fbx";
+        // The protagonist (AI-rigged Tripo model). The old Mixamo body is still in Assets/Models/Mixamo.
+        public const string RiggedModelPath = "Assets/Models/Characters/MainCharacter/MainCharacter.fbx";
         const string ClipDir = "Assets/Animations/Player";
         const string ControllerPath = ClipDir + "/PlayerAnimator.controller";
         const string UpperBodyMaskPath = ClipDir + "/UpperBody.mask";
@@ -79,6 +80,7 @@ namespace BeachVolley.EditorTools
             importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
             importer.importAnimation = false;
             importer.SaveAndReimport();
+            CharacterBuilder.FixMaterial(RiggedModelPath);
 
             Avatar avatar = null;
             foreach (var o in AssetDatabase.LoadAllAssetsAtPath(RiggedModelPath))
@@ -102,8 +104,9 @@ namespace BeachVolley.EditorTools
                 string name = Path.GetFileNameWithoutExtension(path);
                 var importer = (ModelImporter)AssetImporter.GetAtPath(path);
                 importer.animationType = ModelImporterAnimationType.Human;
-                importer.avatarSetup = ModelImporterAvatarSetup.CopyFromOther;
-                importer.sourceAvatar = avatar;
+                // Each Mixamo take carries its own skeleton; the character may be rigged elsewhere
+                // (different bone names), so every clip gets an avatar of its own.
+                importer.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
                 importer.importAnimation = true;
 
                 var settings = importer.defaultClipAnimations;
@@ -432,14 +435,18 @@ namespace BeachVolley.EditorTools
         }
 
         /// <summary>Animator + original material on a rigged character instance. Shared with FoundationBuilder.</summary>
-        public static void ConfigureCharacter(GameObject mesh, RuntimeAnimatorController controller)
+        public static void ConfigureCharacter(GameObject mesh, RuntimeAnimatorController controller) =>
+            ConfigureCharacter(mesh, controller, RiggedModelPath);
+
+        /// <summary>Same, for any Mixamo character: the avatar comes from <paramref name="modelPath"/>.</summary>
+        public static void ConfigureCharacter(GameObject mesh, RuntimeAnimatorController controller, string modelPath)
         {
             var animator = mesh.GetComponent<Animator>();
             if (animator == null) animator = mesh.AddComponent<Animator>();
             animator.runtimeAnimatorController = controller != null
                 ? controller
                 : AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(ControllerPath);
-            foreach (var o in AssetDatabase.LoadAllAssetsAtPath(RiggedModelPath))
+            foreach (var o in AssetDatabase.LoadAllAssetsAtPath(modelPath))
                 if (o is Avatar a) animator.avatar = a;
             animator.applyRootMotion = false;
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
@@ -460,7 +467,10 @@ namespace BeachVolley.EditorTools
         /// measured on the Idle pose: hips over the controller, soles on the sand. Returns the scale.
         /// Shared with FoundationBuilder.
         /// </summary>
-        public static float PlaceRigged(Transform model, GameObject mesh)
+        public static float PlaceRigged(Transform model, GameObject mesh) => PlaceRigged(model, mesh, TargetHeight);
+
+        /// <summary>Same, for a character of the given height (story characters differ from the player).</summary>
+        public static float PlaceRigged(Transform model, GameObject mesh, float height)
         {
             var t = mesh.transform;
             t.localPosition = Vector3.zero;
@@ -468,16 +478,10 @@ namespace BeachVolley.EditorTools
             t.localScale = Vector3.one;
             var animator = mesh.GetComponent<Animator>();
 
-            // Rest pose: overall height, and how far the lowest foot bone sits above the sole.
-            var bounds = new Bounds();
-            bool first = true;
-            foreach (var r in mesh.GetComponentsInChildren<Renderer>())
-            {
-                if (first) { bounds = r.bounds; first = false; }
-                else bounds.Encapsulate(r.bounds);
-            }
-            float scale = bounds.size.y > 0.001f ? TargetHeight / bounds.size.y : 1f;
-            float sole = LowestFootBone(animator, model) - model.InverseTransformPoint(bounds.min).y;
+            // Rest pose: overall height from the real skinned vertices. (Renderer bounds are padded
+            // on some imports, which left the AI-rigged cast floating ~10 cm.)
+            var rest = SkinnedExtent(mesh, model);
+            float scale = rest.y - rest.x > 0.001f ? height / (rest.y - rest.x) : 1f;
             t.localScale = Vector3.one * scale;
 
             AnimationClip idle = null;
@@ -491,21 +495,33 @@ namespace BeachVolley.EditorTools
                 t.localRotation = Quaternion.identity;
             }
 
+            // Idle pose: hips over the origin, lowest point of the body (the soles) on the ground.
             Vector3 hips = model.InverseTransformPoint(animator.GetBoneTransform(HumanBodyBones.Hips).position);
-            float lowest = LowestFootBone(animator, model);
-            t.localPosition = new Vector3(-hips.x, sole * scale - lowest, -hips.z);
+            float sole = SkinnedExtent(mesh, model).x;
+            t.localPosition = new Vector3(-hips.x, -sole, -hips.z);
             return scale;
         }
 
-        static float LowestFootBone(Animator animator, Transform space)
+        /// <summary>Lowest (x) and highest (y) point of the character's skinned meshes as currently posed, in <paramref name="space"/>.</summary>
+        static Vector2 SkinnedExtent(GameObject mesh, Transform space)
         {
-            float lowest = float.MaxValue;
-            foreach (var b in new[] { HumanBodyBones.LeftFoot, HumanBodyBones.RightFoot, HumanBodyBones.LeftToes, HumanBodyBones.RightToes })
+            float lo = float.MaxValue, hi = float.MinValue;
+            var baked = new Mesh();
+            foreach (var smr in mesh.GetComponentsInChildren<SkinnedMeshRenderer>())
             {
-                var bone = animator.GetBoneTransform(b);
-                if (bone != null) lowest = Mathf.Min(lowest, space.InverseTransformPoint(bone.position).y);
+                // Baked "with scale", the vertices are in the renderer's local space (true for both
+                // cm-based Mixamo files and Blender exports whose mesh node is scaled 100x).
+                smr.BakeMesh(baked, true);
+                var tr = smr.transform;
+                foreach (var v in baked.vertices)
+                {
+                    float y = space.InverseTransformPoint(tr.TransformPoint(v)).y;
+                    if (y < lo) lo = y;
+                    if (y > hi) hi = y;
+                }
             }
-            return lowest;
+            Object.DestroyImmediate(baked);
+            return lo == float.MaxValue ? Vector2.zero : new Vector2(lo, hi);
         }
     }
 }

@@ -13,11 +13,17 @@ namespace BeachVolley.Story
         [SerializeField] ScriptedPlay tvMatch;
         [SerializeField] GameObject tvScreen;
         [SerializeField] Transform bedSpot;
+        [Tooltip("Where his hips go when he sits on the bed edge.")]
+        [SerializeField] Transform bedSeat;
         [SerializeField] Transform doorSpot;
         [SerializeField] GameObject bagOnFloor;
         [SerializeField] GameObject bagByDoor;
         [SerializeField] Interactable bag, bottle, phone, tv, door;
         [SerializeField] Light ceilingLight;
+        [Header("The ride to the club")]
+        [SerializeField] Transform travelCar;
+        [SerializeField] Transform travelBike;
+        [SerializeField] StoryActor rider;
 
         protected override IEnumerator Run()
         {
@@ -30,13 +36,30 @@ namespace BeachVolley.Story
             }
         }
 
+        /// <summary>Phone in hand, texting pose (the phone prop on the bed moves into his hand).</summary>
+        void PhoneUp(bool up)
+        {
+            if (playerActor == null) return;
+            if (up)
+            {
+                playerActor.Hold(phone.transform, new Vector3(0.05f, 0.08f, 0.03f), new Vector3(0f, 90f, 0f));
+                playerActor.Gesture("Texting");
+            }
+            else
+            {
+                playerActor.EndPose("Texting");
+                playerActor.Release();
+            }
+        }
+
         void Scoreboard(string score) => ui.SetObjective("COASTAL OPEN  ·  FINAL\n" + score);
 
         // ---------- Scene 1 ----------
 
         IEnumerator TheBeginning()
         {
-            PlaceAt(bedSpot);
+            // Already sitting on the bed edge when the scene fades in.
+            SitPlayer(bedSeat);
             bagByDoor.SetActive(false);
             tvMatch.Score += Scoreboard;
             yield return ui.TitleCard("ACE", "The Road to the Top", 3f);
@@ -67,6 +90,7 @@ namespace BeachVolley.Story
             tvMatch.StartLoop();
 
             // The phone: search, the ad, how he signs up.
+            PhoneUp(true);
             yield return Narrate("He picks up his phone and searches for beach volleyball training nearby.");
             ui.ShowPhone(true, "Search: beach volleyball training near me");
             ShowAd();
@@ -78,8 +102,8 @@ namespace BeachVolley.Story
                 SetFlag("signup", "research");
                 ui.PhoneClear("coastlinebeachclub.com");
                 ui.PhoneCard("About Coastline Beach Club",
-                    "Six sand courts by the water. Coach Áron Varga runs the beginner group: basics first, games later, and nobody gets left behind.");
-                ui.PhoneCard("What members say", "★★★★★  “Came knowing nothing. Three months later I'm playing tournaments with my partner.”  — Máté");
+                    "Six sand courts by the water. Coach Steve runs the beginner group: basics first, games later, and nobody gets left behind.");
+                ui.PhoneCard("What members say", "★★★★★  “Came knowing nothing. Three months later I'm playing tournaments with my partner.”  — Dave");
                 yield return ui.PhoneChoose("Okay. Sign me up.");
             }
             else if (pick == 2)
@@ -100,6 +124,7 @@ namespace BeachVolley.Story
             yield return Wait(0.8f);
             yield return ui.PhoneChoose("Close");
             ui.ShowPhone(false);
+            PhoneUp(false);
             yield return Think("Okay. Let's see what happens.");
 
             yield return FadeOut(1.2f);
@@ -114,7 +139,10 @@ namespace BeachVolley.Story
 
         IEnumerator GettingReady()
         {
+            if (rider != null) rider.Sit(true);
             PlaceAt(bedSpot);
+            if (motor != null) motor.enabled = true;
+            playerActor.Sit(false);
             bagByDoor.SetActive(false);
             bagOnFloor.SetActive(true);
             tvMatch.StartLoop();
@@ -133,10 +161,12 @@ namespace BeachVolley.Story
                 switch (it.id)
                 {
                     case "bag":
+                        playerActor.Gesture("PickUp");
                         yield return Narrate("Shirt, shorts, towel, sunscreen. He stuffs it all into the sports bag.");
                         bag.Available = false;
                         break;
                     case "bottle":
+                        playerActor.Gesture("Drink");
                         yield return Narrate("Water bottle — filled and packed.");
                         bottle.Available = false;
                         break;
@@ -159,6 +189,7 @@ namespace BeachVolley.Story
                 {
                     familyTexted = true;
                     yield return Wait(0.5f);
+                    PhoneUp(true);
                     ui.ShowPhone(true, "Messages");
                     ui.PhoneBubble("Don't forget to leave on time! And don't overthink it.", false, "Mom");
                     yield return Wait(0.6f);
@@ -167,6 +198,7 @@ namespace BeachVolley.Story
                     ui.PhoneBubble(reply, true);
                     yield return Wait(1f);
                     ui.ShowPhone(false);
+                    PhoneUp(false);
                     bagOnFloor.SetActive(false);
                     door.Available = true;
                     yield return Think("Okay. Time to go.");
@@ -181,9 +213,41 @@ namespace BeachVolley.Story
             yield return Think(bike ? "Bike. It's a warm-up, right?" : "Car. I'm saving my legs for the court.");
 
             yield return FadeOut(1f);
-            yield return ui.TitleCard(bike ? "Pedalling along the coast road…" : "Driving down to the coast…", "", 2.2f);
+            yield return Ride(bike);
             yield return ui.TitleCard("4:48 PM", "Coastline Beach Club", 2.2f);
             yield return GoToScene(ClubScene, "club_arrival");
+        }
+
+        /// <summary>The short ride along the coast road: car or bike, camera gliding alongside.</summary>
+        IEnumerator Ride(bool bike)
+        {
+            var vehicle = bike ? travelBike : travelCar;
+            travelCar.gameObject.SetActive(!bike);
+            travelBike.gameObject.SetActive(bike);
+            const float duration = 7f;
+            float speed = bike ? 6f : 13f;
+            Vector3 start = vehicle.position;
+            Vector3 dir = vehicle.forward;
+            Vector3 side = Vector3.Cross(Vector3.up, dir);
+            StartCoroutine(Drive(vehicle, start, dir * speed, duration));
+            // The camera glides along a little slower than the vehicle, so it slowly passes by.
+            // Land side of the road, so the sea is behind the vehicle.
+            StartCoroutine(cam.Dolly(start - dir * 6f + side * 7f + Vector3.up * 2f,
+                start + dir * (speed * duration * 0.75f) + side * 7f + Vector3.up * 2.4f,
+                vehicle, Vector3.up, duration, 40f));
+            yield return FadeIn(0.8f);
+            yield return ui.TitleCard(bike ? "Pedalling along the coast road…" : "Driving down to the coast…", "", 2.4f);
+            yield return Wait(1.2f);
+            yield return FadeOut(1.2f);
+        }
+
+        static IEnumerator Drive(Transform vehicle, Vector3 start, Vector3 velocity, float duration)
+        {
+            for (float t = 0f; t < duration; t += Time.deltaTime)
+            {
+                vehicle.position = start + velocity * t;
+                yield return null;
+            }
         }
 
         // ---------- Scene 7 ----------
@@ -197,21 +261,25 @@ namespace BeachVolley.Story
             tvScreen.SetActive(false);
             Cut("Room");
             yield return FadeIn(1.2f);
+            playerActor.Gesture("Stretch");
             yield return Narrate("He gets home exhausted. Every muscle aches. He drops the sports bag by the door.");
+            playerActor.Gesture("Sigh");
 
+            PhoneUp(true);
             ui.ShowPhone(true, "Messages");
             yield return Wait(0.6f);
             string opener = StoryState.Is("first_answer", "watched")
                 ? "Good first training session. Watching matches is one thing — now you know how it feels."
                 : "Good first training session.";
-            ui.PhoneBubble(opener + " You've still got a lot to learn, but I saw that you didn't give up. If you're serious about this, we'll need to keep working.", false, "Áron (Coach)");
+            ui.PhoneBubble(opener + " You've still got a lot to learn, but I saw that you didn't give up. If you're serious about this, we'll need to keep working.", false, "Steve (Coach)");
             yield return ui.PhoneChoose("I'll be there.", "See you the day after tomorrow, coach.");
             ui.PhoneBubble(Choice == 0 ? "I'll be there." : "See you the day after tomorrow, coach.", true);
-            Relationship("aron", 1);
+            Relationship("steve", 1);
             yield return Wait(1f);
             ui.ShowPhone(false);
+            PhoneUp(false);
 
-            PlaceAt(bedSpot);
+            SitPlayer(bedSeat);
             yield return Blend("TV", 1.6f);
             tvScreen.SetActive(true);
             tvMatch.Score += Scoreboard;
@@ -235,7 +303,7 @@ namespace BeachVolley.Story
 
             yield return ui.TitleCard("CHAPTER COMPLETE", "1.  THE FIRST STEP\n\nEvery professional was once a beginner.", 6f);
             yield return ui.TitleCard("COMING NEXT:  The Sand Never Forgets",
-                "He returns to the court. He must find a beach volleyball partner — while Bence begins to take him seriously as a competitor.", 7f);
+                "He returns to the court. He must find a beach volleyball partner — while Marlon begins to take him seriously as a competitor.", 7f);
 
             StoryState.Chapter = 2;
             yield return GoToScene(MainMenuScene, "ch2_start");

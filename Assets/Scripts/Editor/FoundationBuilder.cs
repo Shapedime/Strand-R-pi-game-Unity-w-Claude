@@ -422,8 +422,9 @@ namespace BeachVolley.EditorTools
         }
 
         /// <summary>Placeholder body, ~1.80 m tall, from primitives. Feet at y = 0, facing +Z. Returns arm pivots (L, R).</summary>
-        internal static Transform[] BuildBody(Transform root, float yOffset, Material tank, Material shorts, Materials mats)
+        internal static Transform[] BuildBody(Transform root, float yOffset, Material tank, Material shorts, Materials mats, Material skin = null)
         {
+            skin ??= mats.Skin;
             var armPivots = new Transform[2];
             var model = new GameObject("Model").transform;
             model.SetParent(root, false);
@@ -432,16 +433,16 @@ namespace BeachVolley.EditorTools
             foreach (float s in new[] { -1f, 1f })
             {
                 string side = s < 0 ? "L" : "R";
-                Part(PrimitiveType.Cube, "Foot_" + side, model, new Vector3(s * 0.11f, 0.03f, 0.04f), new Vector3(0.1f, 0.06f, 0.24f), mats.Skin);
-                Part(PrimitiveType.Capsule, "Leg_" + side, model, new Vector3(s * 0.11f, 0.47f, 0f), new Vector3(0.15f, 0.42f, 0.15f), mats.Skin);
+                Part(PrimitiveType.Cube, "Foot_" + side, model, new Vector3(s * 0.11f, 0.03f, 0.04f), new Vector3(0.1f, 0.06f, 0.24f), skin);
+                Part(PrimitiveType.Capsule, "Leg_" + side, model, new Vector3(s * 0.11f, 0.47f, 0f), new Vector3(0.15f, 0.42f, 0.15f), skin);
                 // Arms hang from a shoulder pivot so BallContact can swing them into a platform.
                 var pivot = new GameObject("ArmPivot_" + side).transform;
                 pivot.SetParent(model, false);
                 pivot.localPosition = new Vector3(s * 0.25f, 1.45f, 0f);
                 pivot.localRotation = Quaternion.Euler(0f, 0f, s * 8f);
-                Part(PrimitiveType.Capsule, "Arm_" + side, pivot, new Vector3(0f, -0.3f, 0f), new Vector3(0.1f, 0.31f, 0.1f), mats.Skin);
+                Part(PrimitiveType.Capsule, "Arm_" + side, pivot, new Vector3(0f, -0.3f, 0f), new Vector3(0.1f, 0.31f, 0.1f), skin);
                 armPivots[s < 0 ? 0 : 1] = pivot;
-                Part(PrimitiveType.Sphere, "Shoulder_" + side, model, new Vector3(s * 0.21f, 1.43f, 0f), new Vector3(0.13f, 0.13f, 0.13f), mats.Skin);
+                Part(PrimitiveType.Sphere, "Shoulder_" + side, model, new Vector3(s * 0.21f, 1.43f, 0f), new Vector3(0.13f, 0.13f, 0.13f), skin);
             }
 
             Part(PrimitiveType.Cube, "Shorts", model, new Vector3(0f, 0.88f, 0f), new Vector3(0.38f, 0.28f, 0.24f), shorts);
@@ -454,8 +455,8 @@ namespace BeachVolley.EditorTools
             number.localRotation = Quaternion.Euler(0f, 0f, 180f);
             foreach (float s in new[] { -1f, 1f })
                 Part(PrimitiveType.Cube, "ShortsStripe", model, new Vector3(s * 0.192f, 0.88f, 0f), new Vector3(0.006f, 0.28f, 0.06f), mats.Line);
-            Part(PrimitiveType.Cylinder, "Neck", model, new Vector3(0f, 1.52f, 0f), new Vector3(0.1f, 0.04f, 0.1f), mats.Skin);
-            Part(PrimitiveType.Sphere, "Head", model, new Vector3(0f, 1.67f, 0f), new Vector3(0.22f, 0.25f, 0.23f), mats.Skin);
+            Part(PrimitiveType.Cylinder, "Neck", model, new Vector3(0f, 1.52f, 0f), new Vector3(0.1f, 0.04f, 0.1f), skin);
+            Part(PrimitiveType.Sphere, "Head", model, new Vector3(0f, 1.67f, 0f), new Vector3(0.22f, 0.25f, 0.23f), skin);
             Part(PrimitiveType.Sphere, "Hair", model, new Vector3(0f, 1.73f, -0.01f), new Vector3(0.235f, 0.15f, 0.24f), mats.Hair);
             // Visor brim makes facing direction obvious from behind the camera.
             Part(PrimitiveType.Cube, "VisorBrim", model, new Vector3(0f, 1.74f, 0.14f), new Vector3(0.2f, 0.015f, 0.1f), mats.Line);

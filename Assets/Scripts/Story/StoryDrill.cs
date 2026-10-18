@@ -11,7 +11,7 @@ namespace BeachVolley.Story
     public enum DrillKind { Passing, Setting, Attacking }
 
     /// <summary>
-    /// The first-training drills with the real gameplay: Áron tosses for passing, Máté feeds for
+    /// The first-training drills with the real gameplay: Steve tosses for passing, Dave feeds for
     /// setting and sets for attacking. A drill is a fixed number of reps; misses never block the
     /// story, they only change what the coach says and how much XP lands.
     /// </summary>
@@ -20,8 +20,8 @@ namespace BeachVolley.Story
         [SerializeField] VolleyBall ball;
         [SerializeField] BallContact contact;
         [SerializeField] PlayerSkills skills;
-        [SerializeField] Transform aron;
-        [SerializeField] Transform mate;
+        [SerializeField] Transform steve;
+        [SerializeField] Transform dave;
         [SerializeField] Transform marker;
         [SerializeField] StoryUI ui;
 
@@ -188,6 +188,11 @@ namespace BeachVolley.Story
 
         // ---------- Feeds ----------
 
+        static void Touch(Transform who, HitType type)
+        {
+            if (who != null && who.TryGetComponent(out StoryActor actor)) actor.Volley(type);
+        }
+
         void Feed(DrillKind k)
         {
             Transform p = skills.transform;
@@ -195,8 +200,8 @@ namespace BeachVolley.Story
             {
                 case DrillKind.Passing:
                 {
-                    // Áron's underhand toss to the player's waist (the old coach toss).
-                    Vector3 origin = aron.position + aron.forward * 0.45f + Vector3.up * 1.5f;
+                    // Steve's underhand toss to the player's waist (the old coach toss).
+                    Vector3 origin = steve.position + steve.forward * 0.45f + Vector3.up * 1.5f;
                     Vector2 scatter = UnityEngine.Random.insideUnitCircle * skills.Scale(SkillType.Pass, 1.2f, 0.3f);
                     Vector3 target = p.position + p.forward * 0.5f + new Vector3(scatter.x, 0.9f, scatter.y);
                     ball.Place(origin);
@@ -205,8 +210,9 @@ namespace BeachVolley.Story
                 }
                 case DrillKind.Setting:
                 {
-                    // Máté pops a pass up over the player's head.
-                    Vector3 origin = mate.position + mate.forward * 0.4f + Vector3.up * 0.9f;
+                    // Dave pops a pass up over the player's head.
+                    Touch(dave, HitType.Bump);
+                    Vector3 origin = dave.position + dave.forward * 0.4f + Vector3.up * 0.9f;
                     Vector3 target = p.position + p.forward * 0.3f + Vector3.up * 2.2f;
                     ball.Place(origin);
                     ball.Launch(ball.VelocityToReach(origin, target, 4.4f));
@@ -214,8 +220,9 @@ namespace BeachVolley.Story
                 }
                 default:
                 {
-                    // Máté sets high to the attack point by the net.
-                    Vector3 origin = mate.position + Vector3.up * 2.1f;
+                    // Dave sets high to the attack point by the net.
+                    Touch(dave, HitType.Set);
+                    Vector3 origin = dave.position + Vector3.up * 2.1f;
                     Vector3 target = attackPoint + Vector3.up * 2.7f;
                     ball.Place(origin);
                     ball.Launch(ball.VelocityToReach(origin, target, 4.8f));

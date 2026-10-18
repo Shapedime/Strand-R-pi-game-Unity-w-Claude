@@ -17,7 +17,7 @@ namespace BeachVolley.EditorTools
     /// <summary>
     /// Builds the two Chapter 1 scenes from code: StoryHome (bedroom + a far-away "TV broadcast"
     /// court rendered onto the TV) and StoryClub (Coastline Beach Club: training court, a second
-    /// court with players warming up, Áron, Máté, Bence). Run Build Foundation first (prefabs).
+    /// court with players warming up, Steve, Dave, Marlon). Run Build Foundation first (prefabs).
     /// Safe to re-run; both scenes are rebuilt from scratch.
     /// </summary>
     public static class StoryBuilder
@@ -28,10 +28,20 @@ namespace BeachVolley.EditorTools
         const string StoryDir = "Assets/Story";
         const string TvFeedPath = StoryDir + "/TvFeed.renderTexture";
 
+        const string HandheldNoisePath = "Packages/com.unity.cinemachine/Presets/Noise/Handheld_normal_mild.asset";
+        static readonly Vector3 TravelOrigin = new Vector3(-500f, 0f, 0f);
         static readonly Vector3 BroadcastOrigin = new Vector3(500f, 0f, 0f);
 
         [MenuItem("Beach Volleyball/Build Story Chapter 1")]
         public static void BuildAll()
+        {
+            CharacterBuilder.BuildAll();
+            BuildScenes();
+        }
+
+        /// <summary>Just the two scenes, from the character prefabs already built (much faster).</summary>
+        [MenuItem("Beach Volleyball/Build Story Scenes Only")]
+        public static void BuildScenes()
         {
             FoundationBuilder.EnsureFolder(StoryDir);
             BuildHome();
@@ -56,11 +66,6 @@ namespace BeachVolley.EditorTools
             public readonly Material Bottle = FoundationBuilder.Materials.Lit("WaterBottle", new Color(0.3f, 0.8f, 0.95f), 0.7f);
             public readonly Material Door = FoundationBuilder.Materials.Lit("Door", new Color(0.62f, 0.45f, 0.3f), 0.3f);
             public readonly Material Poster = FoundationBuilder.Materials.Lit("RoomPoster", new Color(0.98f, 0.62f, 0.2f), 0.2f);
-            public readonly Material MateShirt = FoundationBuilder.Materials.Lit("MateShirt", new Color(0.98f, 0.8f, 0.15f), 0.25f);
-            public readonly Material BenceShirt = FoundationBuilder.Materials.Lit("BenceShirt", new Color(0.12f, 0.12f, 0.14f), 0.25f);
-            public readonly Material BenceShorts = FoundationBuilder.Materials.Lit("BenceShorts", new Color(0.75f, 0.1f, 0.12f), 0.25f);
-            public readonly Material TeamTeal = FoundationBuilder.Materials.Lit("TeamTeal", new Color(0.1f, 0.65f, 0.6f), 0.25f);
-            public readonly Material TeamWhite = FoundationBuilder.Materials.Lit("TeamWhite", new Color(0.92f, 0.92f, 0.9f), 0.25f);
             public readonly Material Car = FoundationBuilder.Materials.Lit("CarPaint", new Color(0.7f, 0.08f, 0.1f), 0.8f, 0.4f);
             public readonly Material Glass = FoundationBuilder.Materials.Lit("CarGlass", new Color(0.15f, 0.2f, 0.25f), 0.95f);
             public readonly Material Metal = FoundationBuilder.Materials.Lit("BikeMetal", new Color(0.2f, 0.5f, 0.8f), 0.7f, 0.6f);
@@ -102,39 +107,9 @@ namespace BeachVolley.EditorTools
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        /// <summary>A primitive person (feet at the root, facing +Z) under a "Body" child.</summary>
-        static Transform Figure(string name, Transform parent, Vector3 pos, float yaw, Material shirt, Material shorts, StoryMats m)
-        {
-            var root = new GameObject(name).transform;
-            root.SetParent(parent, false);
-            root.SetLocalPositionAndRotation(pos, Quaternion.Euler(0f, yaw, 0f));
-            var body = new GameObject("Body").transform;
-            body.SetParent(root, false);
-            FoundationBuilder.BuildBody(body, 0f, shirt, shorts, m.Base);
-            return root;
-        }
-
-        static NpcFigure Npc(string name, Transform parent, Vector3 pos, float yaw, Material shirt, Material shorts, StoryMats m, Color tagColor)
-        {
-            var root = Figure(name, parent, pos, yaw, shirt, shorts, m);
-            var tagGo = new GameObject("NameTag");
-            tagGo.transform.SetParent(root, false);
-            tagGo.transform.localPosition = new Vector3(0f, 2.15f, 0f);
-            var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            var tm = tagGo.AddComponent<TextMesh>();
-            tm.text = name;
-            tm.font = font;
-            tm.fontSize = 64;
-            tm.characterSize = 0.035f;
-            tm.anchor = TextAnchor.MiddleCenter;
-            tm.alignment = TextAlignment.Center;
-            tm.color = tagColor;
-            tagGo.GetComponent<MeshRenderer>().sharedMaterial = font.material;
-            var npc = root.gameObject.AddComponent<NpcFigure>();
-            npc.displayName = name;
-            Wire(npc, ("body", root.Find("Body")), ("nameTag", tm));
-            return npc;
-        }
+        /// <summary>A cast member's prefab (rigged model or placeholder, see CharacterBuilder).</summary>
+        static StoryActor Cast(string name, Transform parent, Vector3 pos, float yaw) =>
+            CharacterBuilder.Spawn(name, parent, pos, yaw);
 
         static CameraShot Shot(string name, Transform parent, Vector3 pos, Vector3 lookAt, float fov)
         {
@@ -174,12 +149,12 @@ namespace BeachVolley.EditorTools
         }
 
         /// <summary>Two players a side flying a prop ball around (see ScriptedPlay).</summary>
-        static ScriptedPlay Players(Transform court, Transform[] near, StoryMats m, Material farShirt, Material farShorts, float tempo)
+        static ScriptedPlay Players(Transform court, Transform[] near, StoryMats m, string far1, string far2, float tempo)
         {
             var far = new[]
             {
-                Figure("Far1", court, new Vector3(-1.6f, 0f, 5f), 180f, farShirt, farShorts, m),
-                Figure("Far2", court, new Vector3(1.8f, 0f, 4.2f), 180f, farShirt, farShorts, m),
+                Cast(far1, court, new Vector3(-1.6f, 0f, 5f), 180f).transform,
+                Cast(far2, court, new Vector3(1.8f, 0f, 4.2f), 180f).transform,
             };
             var play = court.gameObject.AddComponent<ScriptedPlay>();
             var ball = PropBall(court, m);
@@ -214,7 +189,16 @@ namespace BeachVolley.EditorTools
         static GameObject Player(Transform parent, Vector3 pos, float yaw)
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabDir + "/PlayerRookie.prefab");
-            return FoundationBuilder.Instantiate(prefab, parent, pos, Quaternion.Euler(0f, yaw, 0f));
+            var player = FoundationBuilder.Instantiate(prefab, parent, pos, Quaternion.Euler(0f, yaw, 0f));
+            // The protagonist acts in cutscenes with the same controller as the cast.
+            var actor = player.AddComponent<StoryActor>();
+            actor.displayName = "You";
+            var so = new SerializedObject(actor);
+            so.FindProperty("animator").objectReferenceValue = player.GetComponentInChildren<Animator>();
+            so.FindProperty("actingController").objectReferenceValue = CharacterBuilder.Controller;
+            so.FindProperty("externallyMoved").boolValue = true;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            return player;
         }
 
         static Camera MainCamera(Transform parent, bool follow, Transform player)
@@ -226,7 +210,9 @@ namespace BeachVolley.EditorTools
             cam.nearClipPlane = 0.05f;
             go.AddComponent<AudioListener>();
             if (follow) Wire(go.AddComponent<ThirdPersonFollow>(), ("target", player));
-            go.AddComponent<CinematicCamera>();
+            go.AddComponent<Unity.Cinemachine.CinemachineBrain>();
+            Wire(go.AddComponent<CinematicCamera>(),
+                ("handheld", AssetDatabase.LoadAssetAtPath<Unity.Cinemachine.NoiseSettings>(HandheldNoisePath)));
             return cam;
         }
 
@@ -262,6 +248,7 @@ namespace BeachVolley.EditorTools
 
             var room = BuildRoom(world, m, out var parts);
             var broadcast = BuildBroadcast(world, m, out var tvShots);
+            BuildTravel(world, m, out var travelCar, out var travelBike, out var rider);
 
             // TV screen shows the broadcast camera's feed.
             var feed = AssetDatabase.LoadAssetAtPath<RenderTexture>(TvFeedPath);
@@ -289,11 +276,12 @@ namespace BeachVolley.EditorTools
             Wire(director,
                 ("ui", ui), ("cam", cam.GetComponent<CinematicCamera>()), ("player", player.transform),
                 ("tvMatch", broadcast.GetComponent<ScriptedPlay>()), ("tvScreen", parts["Screen"].gameObject),
-                ("bedSpot", parts["BedSpot"]), ("doorSpot", parts["DoorSpot"]),
+                ("bedSpot", parts["BedSpot"]), ("bedSeat", parts["BedSeat"]), ("doorSpot", parts["DoorSpot"]),
                 ("bagOnFloor", parts["Bag"].gameObject), ("bagByDoor", parts["BagByDoor"].gameObject),
                 ("bag", parts["Bag"].GetComponent<Interactable>()), ("bottle", parts["Bottle"].GetComponent<Interactable>()),
                 ("phone", parts["Phone"].GetComponent<Interactable>()), ("tv", parts["TvSpot"].GetComponent<Interactable>()),
-                ("door", parts["Door"].GetComponent<Interactable>()), ("ceilingLight", parts["CeilingLight"].GetComponent<Light>()));
+                ("door", parts["Door"].GetComponent<Interactable>()), ("ceilingLight", parts["CeilingLight"].GetComponent<Light>()),
+                ("travelCar", travelCar.transform), ("travelBike", travelBike.transform), ("rider", rider));
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
@@ -373,9 +361,14 @@ namespace BeachVolley.EditorTools
             Box("Headboard", room, new Vector3(-1.75f, 0.65f, 1.82f), new Vector3(1.4f, 0.9f, 0.08f), m.Furniture);
             var bedSpot = new GameObject("BedSpot").transform;
             bedSpot.SetParent(room, false);
-            bedSpot.SetLocalPositionAndRotation(new Vector3(-0.75f, 0f, 0.35f), Quaternion.Euler(0f, 90f, 0f));
+            bedSpot.SetLocalPositionAndRotation(new Vector3(-0.82f, 0f, 0.35f), Quaternion.Euler(0f, 90f, 0f));
             parts["BedSpot"] = bedSpot;
-            var phone = Box("Phone", room, new Vector3(-1.3f, 0.59f, 0.15f), new Vector3(0.08f, 0.012f, 0.16f), m.Dark);
+            // Hips on the mattress edge (0.55 m high, edge at x = -1.05), facing the TV.
+            var bedSeat = new GameObject("BedSeat").transform;
+            bedSeat.SetParent(room, false);
+            bedSeat.SetLocalPositionAndRotation(new Vector3(-1.3f, 0.1f, 0.35f), Quaternion.Euler(0f, 90f, 0f));
+            parts["BedSeat"] = bedSeat;
+            var phone = Box("Phone", room, new Vector3(-1.55f, 0.59f, -0.15f), new Vector3(0.08f, 0.012f, 0.16f), m.Dark);
             parts["Phone"] = Interact(phone.transform, "phone", "Check the training confirmation", 1.2f).transform;
 
             // TV on the east wall, on a low cabinet.
@@ -442,10 +435,11 @@ namespace BeachVolley.EditorTools
             var root = DecorCourt("BroadcastCourt", world, BroadcastOrigin, m, true);
             var near = new[]
             {
-                Figure("Winner", root, new Vector3(-1.4f, 0f, -4.5f), 0f, m.Base.Tank, m.Base.Shorts, m),
-                Figure("Partner", root, new Vector3(1.6f, 0f, -3.8f), 0f, m.Base.Tank, m.Base.Shorts, m),
+                Cast("TvWinner", root, new Vector3(-1.4f, 0f, -4.5f), 0f).transform,
+                Cast("TvPartner", root, new Vector3(1.6f, 0f, -3.8f), 0f).transform,
             };
-            Players(root, near, m, m.TeamTeal, m.TeamWhite, 1f);
+            Players(root, near, m, "TvFar1", "TvFar2", 1f);
+            TvFans(root);
 
             // Grandstands along both sidelines.
             var rng = new System.Random(3);
@@ -459,6 +453,8 @@ namespace BeachVolley.EditorTools
                     {
                         if (rng.NextDouble() < 0.15) continue;
                         float z = -9.5f + i * 0.9f + (float)rng.NextDouble() * 0.2f;
+                        // Leave room in the front row for the real fans (TvFans).
+                        if (row == 0 && System.Array.Exists(FanZ, fz => Mathf.Abs(fz - z) < 0.7f)) continue;
                         Part(PrimitiveType.Capsule, "Fan", root, new Vector3(x, row * 0.45f + 0.75f, z),
                             new Vector3(0.38f, 0.38f, 0.38f), m.Crowd[rng.Next(m.Crowd.Length)]);
                     }
@@ -495,34 +491,35 @@ namespace BeachVolley.EditorTools
             // People.
             var people = new GameObject("People").transform;
             people.SetParent(world, false);
-            var aron = Npc("Áron", people, new Vector3(2.5f, 0f, -6f), 0f, m.Base.CoachShirt, m.Base.CoachShorts, m, new Color(0.6f, 1f, 0.7f));
-            var mate = Npc("Máté", people, new Vector3(-1.2f, 0f, -6.5f), 0f, m.MateShirt, m.Base.CoachShorts, m, new Color(1f, 0.9f, 0.4f));
+            var steve = Cast("Steve", people, new Vector3(2.5f, 0f, -6f), 0f);
+            var dave = Cast("Dave", people, new Vector3(-1.2f, 0f, -6.5f), 0f);
 
-            // Second court: Bence and three club players warming up.
+            // Second court: Marlon and three club players warming up.
             var court2 = DecorCourt("Court2", world, new Vector3(14f, 0f, 0f), m, false);
-            var bence = Npc("Bence", court2, new Vector3(-1.5f, 0f, -4.5f), 0f, m.BenceShirt, m.BenceShorts, m, new Color(1f, 0.55f, 0.5f));
-            var benceMate = Figure("ClubPlayer", court2, new Vector3(1.4f, 0f, -3.6f), 0f, m.TeamWhite, m.Base.Shorts, m);
-            var rally = Players(court2, new[] { bence.transform, benceMate }, m, m.TeamTeal, m.Base.CoachShorts, 1f);
+            var marlon = Cast("Marlon", court2, new Vector3(-1.5f, 0f, -4.5f), 0f);
+            var marlonMate = Cast("ClubPlayer", court2, new Vector3(1.4f, 0f, -3.6f), 0f);
+            var rally = Players(court2, new[] { marlon.transform, marlonMate.transform }, m, "ClubFar1", "ClubFar2", 1f);
 
             // A third court further down the beach with a casual rally, for life in the background.
             var court3 = DecorCourt("Court3", world, new Vector3(-15f, 0f, 2f), m, false);
             var c3 = new[]
             {
-                Figure("Casual1", court3, new Vector3(-1.4f, 0f, -4f), 0f, m.Crowd[0], m.Base.Shorts, m),
-                Figure("Casual2", court3, new Vector3(1.6f, 0f, -3.5f), 0f, m.Crowd[2], m.Base.CoachShorts, m),
+                Cast("Casual1", court3, new Vector3(-1.4f, 0f, -4f), 0f).transform,
+                Cast("Casual2", court3, new Vector3(1.6f, 0f, -3.5f), 0f).transform,
             };
-            Players(court3, c3, m, m.Crowd[4], m.TeamWhite, 0.8f);
+            Players(court3, c3, m, "CasualFar1", "CasualFar2", 0.8f);
 
             // Entrance gate, parking, bench.
             BuildEntrance(world, m, out var car, out var bike);
             var bench = new GameObject("Bench").transform;
             bench.SetParent(world, false);
             bench.SetLocalPositionAndRotation(new Vector3(-6.2f, 0f, -3.9f), Quaternion.LookRotation(new Vector3(5.6f, 0f, 3.5f)));
-            Box("Seat", bench, new Vector3(0f, 0.45f, 0f), new Vector3(2f, 0.08f, 0.45f), m.Base.Wood, true);
+            // No collider: the player sits on it in cutscenes and the controller would be pushed off.
+            Box("Seat", bench, new Vector3(0f, 0.45f, 0f), new Vector3(2f, 0.08f, 0.45f), m.Base.Wood);
             foreach (float sx in new[] { -0.85f, 0.85f })
                 Box("Leg", bench, new Vector3(sx, 0.22f, 0f), new Vector3(0.08f, 0.44f, 0.4f), m.Base.Wood);
-            Box("Bag", bench, new Vector3(-0.5f, 0.62f, 0f), new Vector3(0.6f, 0.28f, 0.3f), m.Bag);
-            Part(PrimitiveType.Cylinder, "Bottle", bench, new Vector3(0.4f, 0.6f, 0f), new Vector3(0.08f, 0.12f, 0.08f), m.Bottle);
+            Box("Bag", bench, new Vector3(-0.8f, 0.62f, 0f), new Vector3(0.5f, 0.28f, 0.3f), m.Bag);
+            Part(PrimitiveType.Cylinder, "Bottle", bench, new Vector3(-1.25f, 0.12f, 0.25f), new Vector3(0.08f, 0.12f, 0.08f), m.Bottle);
 
             // Drill marker and the story systems.
             var marker = FoundationBuilder.Instantiate(AssetDatabase.LoadAssetAtPath<GameObject>(PrefabDir + "/TrainingMarker.prefab"), world,
@@ -534,11 +531,11 @@ namespace BeachVolley.EditorTools
             story.SetParent(world, false);
             var drill = Wire(story.gameObject.AddComponent<StoryDrill>(),
                 ("ball", vb), ("contact", contact), ("skills", player.GetComponent<PlayerSkills>()),
-                ("aron", aron.transform), ("mate", mate.transform), ("marker", marker.transform), ("ui", ui));
+                ("steve", steve.transform), ("dave", dave.transform), ("marker", marker.transform), ("ui", ui));
             Wire(story.gameObject.AddComponent<SkillToasts>(), ("skills", player.GetComponent<PlayerSkills>()));
             Wire(story.gameObject.AddComponent<Chapter1Club>(),
                 ("ui", ui), ("cam", cam.GetComponent<CinematicCamera>()), ("player", player.transform),
-                ("aron", aron), ("mate", mate), ("bence", bence), ("clubRally", rally), ("drill", drill),
+                ("steve", steve), ("dave", dave), ("marlon", marlon), ("clubRally", rally), ("drill", drill),
                 ("contact", contact), ("car", car), ("bike", bike));
 
             EditorSceneManager.MarkSceneDirty(scene);
@@ -574,9 +571,15 @@ namespace BeachVolley.EditorTools
                 Box("Fence", gate, new Vector3(sx * 10f, 0.5f, 0f), new Vector3(15f, 1f, 0.1f), m.Base.Wood);
 
             // His ride: a car or a bike just inside the gate (the director shows the one he chose).
-            car = new GameObject("Car");
-            car.transform.SetParent(world, false);
-            car.transform.SetLocalPositionAndRotation(new Vector3(-11f, 0f, -8f), Quaternion.Euler(0f, 90f, 0f));
+            car = MakeCar(world, new Vector3(-11f, 0f, -8f), 90f, m);
+            bike = MakeBike(world, new Vector3(-4.3f, 0f, -13.8f), 20f, m);
+        }
+
+        static GameObject MakeCar(Transform parent, Vector3 pos, float yaw, StoryMats m)
+        {
+            var car = new GameObject("Car");
+            car.transform.SetParent(parent, false);
+            car.transform.SetLocalPositionAndRotation(pos, Quaternion.Euler(0f, yaw, 0f));
             Box("Body", car.transform, new Vector3(0f, 0.55f, 0f), new Vector3(1.8f, 0.6f, 4.1f), m.Car, true);
             Box("Cabin", car.transform, new Vector3(0f, 1.1f, -0.2f), new Vector3(1.6f, 0.55f, 2.2f), m.Glass);
             foreach (float sx in new[] { -0.85f, 0.85f })
@@ -585,10 +588,14 @@ namespace BeachVolley.EditorTools
                 var wheel = Part(PrimitiveType.Cylinder, "Wheel", car.transform, new Vector3(sx, 0.33f, sz), new Vector3(0.66f, 0.12f, 0.66f), m.Dark);
                 wheel.localRotation = Quaternion.Euler(0f, 0f, 90f);
             }
+            return car;
+        }
 
-            bike = new GameObject("Bike");
-            bike.transform.SetParent(world, false);
-            bike.transform.SetLocalPositionAndRotation(new Vector3(-4.3f, 0f, -13.8f), Quaternion.Euler(0f, 20f, 0f));
+        static GameObject MakeBike(Transform parent, Vector3 pos, float yaw, StoryMats m)
+        {
+            var bike = new GameObject("Bike");
+            bike.transform.SetParent(parent, false);
+            bike.transform.SetLocalPositionAndRotation(pos, Quaternion.Euler(0f, yaw, 0f));
             foreach (float sz in new[] { -0.52f, 0.52f })
             {
                 var wheel = Part(PrimitiveType.Cylinder, "Wheel", bike.transform, new Vector3(0f, 0.35f, sz), new Vector3(0.7f, 0.02f, 0.7f), m.Dark);
@@ -601,6 +608,56 @@ namespace BeachVolley.EditorTools
             Part(PrimitiveType.Cylinder, "Stem", bike.transform, new Vector3(0f, 0.75f, 0.45f), new Vector3(0.04f, 0.4f, 0.04f), m.Metal);
             var bar = Part(PrimitiveType.Cylinder, "Handlebar", bike.transform, new Vector3(0f, 1.1f, 0.45f), new Vector3(0.04f, 0.28f, 0.04f), m.Dark);
             bar.localRotation = Quaternion.Euler(0f, 0f, 90f);
+            return bike;
+        }
+
+        /// <summary>
+        /// The ride to the club, far from the bedroom: a coast road along the sea with palms. The car
+        /// (or the bike with the protagonist on it) drives along +X; the director moves it.
+        /// </summary>
+        static Transform BuildTravel(Transform world, StoryMats m, out GameObject car, out GameObject bike, out StoryActor rider)
+        {
+            var root = new GameObject("CoastRoad").transform;
+            root.SetParent(world, false);
+            root.localPosition = TravelOrigin;
+            Box("Sand", root, new Vector3(0f, -0.1f, 0f), new Vector3(260f, 0.2f, 60f), m.Base.SandFar);
+            Box("Road", root, new Vector3(0f, 0.005f, 0f), new Vector3(260f, 0.02f, 6f), m.Dark);
+            for (int i = -26; i <= 26; i++)
+                Box("Stripe", root, new Vector3(i * 5f, 0.02f, 0f), new Vector3(2.2f, 0.01f, 0.15f), m.Base.Line);
+            Box("Shallows", root, new Vector3(0f, -0.01f, 22f), new Vector3(400f, 0.02f, 10f), m.Base.Shallows);
+            Box("Sea", root, new Vector3(0f, -0.012f, 160f), new Vector3(600f, 0.02f, 270f), m.Base.Ocean);
+            var rng = new System.Random(5);
+            for (int i = 0; i < 26; i++)
+            {
+                float x = -120f + i * 9.5f + (float)rng.NextDouble() * 3f;
+                float z = (i % 2 == 0 ? 6f : -7f) + (float)rng.NextDouble() * 2f;
+                float h = 4f + (float)rng.NextDouble() * 2f;
+                var trunk = Part(PrimitiveType.Cylinder, "Palm", root, new Vector3(x, h * 0.5f, z), new Vector3(0.3f, h * 0.5f, 0.3f), m.Base.Wood);
+                trunk.localRotation = Quaternion.Euler(0f, 0f, (float)rng.NextDouble() * 10f - 5f);
+                Part(PrimitiveType.Sphere, "Leaves", root, new Vector3(x, h + 0.2f, z), new Vector3(3f, 0.9f, 3f), m.Base.DuneGrass);
+            }
+            car = MakeCar(root, new Vector3(-60f, 0f, -1.5f), 90f, m);
+            bike = MakeBike(root, new Vector3(-60f, 0f, -1.5f), 90f, m);
+            // The protagonist's own model, sitting on the saddle (the sit clip puts the hips about 0.45 m up).
+            rider = Cast("Rider", bike.transform, new Vector3(0f, 0.5f, -0.3f), 0f);
+            return root;
+        }
+
+        static readonly float[] FanZ = { -5.5f, -2.1f, 1.3f, 4.7f };
+
+        /// <summary>A few real fans in the front rows of the televised final, cheering from their seats.</summary>
+        static void TvFans(Transform court)
+        {
+            var models = new[] { "Casual1", "Casual2" };
+            int n = 0;
+            foreach (float side in new[] { -1f, 1f })
+                for (int i = 0; i < 4; i++)
+                {
+                    var fan = Cast(models[n++ % 2], court, new Vector3(side * 8f, 0.4f, FanZ[i]), side > 0 ? -90f : 90f);
+                    var so = new SerializedObject(fan);
+                    so.FindProperty("idlePose").stringValue = i % 2 == 0 ? "Sitting_Cheer" : "Sitting_Clap";
+                    so.ApplyModifiedPropertiesWithoutUndo();
+                }
         }
     }
 }
