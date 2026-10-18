@@ -1,5 +1,7 @@
 using BeachVolley.Core;
 using BeachVolley.Menu;
+using BeachVolley.Skills;
+using BeachVolley.Story;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UIElements;
@@ -25,6 +27,7 @@ namespace BeachVolley.Practice
         Button zonesButton;
 
         public bool IsOpen { get; private set; }
+        bool cursorShown;
 
         static readonly (MachineMode mode, string label)[] Modes =
         {
@@ -51,7 +54,17 @@ namespace BeachVolley.Practice
             SetOpen(false);
         }
 
-        void OnDisable() => toggleAction.Disable();
+        void Start()
+        {
+            // Practice with your story player: the levels you built carry over (spending stays a story thing).
+            if (StoryState.HasSave) StoryState.ApplySkills(FindAnyObjectByType<PlayerSkills>());
+        }
+
+        void OnDisable()
+        {
+            toggleAction.Disable();
+            if (cursorShown) { CursorControl.Hide(this); cursorShown = false; }
+        }
         void OnDestroy() => toggleAction.Dispose();
 
         void Update()
@@ -64,12 +77,12 @@ namespace BeachVolley.Practice
             IsOpen = open;
             if (screen != null) MenuStyle.Show(screen, open);
             UiPointerGate.MenuOpen = open;
-            if (open)
+            if (open != cursorShown)
             {
-                UnityEngine.Cursor.lockState = CursorLockMode.None;
-                UnityEngine.Cursor.visible = true;
-                Refresh();
+                if (open) CursorControl.Show(this); else CursorControl.Hide(this);
+                cursorShown = open;
             }
+            if (open) Refresh();
         }
 
         void Build()

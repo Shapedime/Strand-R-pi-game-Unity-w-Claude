@@ -27,8 +27,10 @@ namespace BeachVolley.EditorTools
         // Clip groups by role. Scripts call these role names (Gesture("Wave")...).
         static readonly string[] UpperOneShots = { "Wave", "Point", "Clap", "Shrug", "Nod", "HeadShake", "Laugh", "Drink", "Arguing", "Dismiss", "Angry", "LookAway", "Happy", "SarcasticNod", "Sigh" };
         static readonly string[] UpperHolds = { "Talking", "ArmsCrossed", "Texting" };
-        static readonly string[] BaseOneShots = { "PickUp", "Cheer", "FistPump", "Stretch" };
+        static readonly string[] BaseOneShots = { "PickUp", "Cheer", "FistPump", "Stretch", "GymSquat", "GymCurl", "GymClean" };
         static readonly string[] BaseHolds = { "Tired_Idle", "Sitting_Cheer", "Sitting_Clap" };
+        /// <summary>Playback speed for one-shots whose download is slower than a real rep.</summary>
+        static readonly Dictionary<string, float> ClipSpeed = new Dictionary<string, float> { ["GymCurl"] = 1.6f, ["GymClean"] = 1.5f };
         static readonly string[] Looping = { "Talking", "ArmsCrossed", "Texting", "Tired_Idle", "SitIdle", "Walk_Casual", "Sitting_Cheer", "Sitting_Clap" };
 
         /// <summary>
@@ -68,6 +70,10 @@ namespace BeachVolley.EditorTools
             ("Sigh", new[] { "relieved sigh" }),
             ("Stretch", new[] { "Arm Stretching" }),
             ("Tired_Idle", new[] { "weight shift" }),
+            // Chapter 3 gym (one rep per clip; GymSession puts the barbell / dumbbells in the hands).
+            ("GymSquat", new[] { "Back Squat" }),
+            ("GymCurl", new[] { "Bicep Curl" }),
+            ("GymClean", new[] { "Power clean", "Power Clean" }),
         };
 
         /// <summary>One member of the cast. <c>model</c> is the FBX path under Assets/Models/Characters, without ".fbx".</summary>
@@ -85,6 +91,9 @@ namespace BeachVolley.EditorTools
             new Def { name = "Steve", display = "Steve", model = "CoachSteve/CoachSteve", height = 1.82f, shirt = new Color(0.15f, 0.55f, 0.35f), shorts = new Color(0.2f, 0.2f, 0.22f), tag = new Color(0.6f, 1f, 0.7f) },
             new Def { name = "Dave", display = "Dave", model = "Dave/Dave", height = 1.78f, shirt = new Color(0.98f, 0.8f, 0.15f), shorts = new Color(0.45f, 0.45f, 0.48f), tag = new Color(1f, 0.9f, 0.4f) },
             new Def { name = "Marlon", display = "Marlon", model = "Marlon/Marlon", height = 1.9f, shirt = new Color(0.12f, 0.12f, 0.14f), shorts = new Color(0.75f, 0.1f, 0.12f), tag = new Color(1f, 0.55f, 0.5f), skin = new Color(0.36f, 0.22f, 0.14f) },
+            // Chapter 2: Alex (calm, technical, been here since spring) and Nina (a year in, tosses and sets in drills).
+            new Def { name = "Alex", display = "Alex", model = "Players/ManPlayer", height = 1.86f, shirt = new Color(0.12f, 0.2f, 0.42f), shorts = new Color(0.92f, 0.92f, 0.9f), tag = new Color(0.6f, 0.75f, 1f) },
+            new Def { name = "Nina", display = "Nina", model = "Players/WomanPlayer", height = 1.72f, shirt = new Color(0.95f, 0.45f, 0.55f), shorts = new Color(0.2f, 0.2f, 0.22f), tag = new Color(1f, 0.7f, 0.8f) },
             // The protagonist's own body for cutscenes he isn't playing in (riding the bike).
             new Def { name = "Rider", display = "Rider", model = "MainCharacter/MainCharacter", height = 1.8f, shirt = new Color(0.1f, 0.1f, 0.12f), shorts = new Color(0.1f, 0.1f, 0.12f), nameTag = false },
             // Extras: club players, TV players and the casual court share the player and viewer models.
@@ -99,6 +108,8 @@ namespace BeachVolley.EditorTools
             Extra("Casual2", "Viewers/RemyViewerMan1", new Color(0.25f, 0.5f, 0.9f), new Color(0.2f, 0.2f, 0.22f)),
             Extra("CasualFar1", "Players/WomanPlayer", new Color(0.3f, 0.75f, 0.4f), new Color(0.92f, 0.92f, 0.9f)),
             Extra("CasualFar2", "Players/ManPlayer", new Color(0.3f, 0.75f, 0.4f), new Color(0.92f, 0.92f, 0.9f)),
+            // Steps into a background rally when the story takes one of its players away.
+            Extra("ClubSub", "Viewers/RemyViewerMan1", new Color(0.85f, 0.45f, 0.15f), new Color(0.2f, 0.2f, 0.22f)),
         };
 
         static Def Extra(string name, string model, Color shirt, Color shorts) =>
@@ -389,6 +400,7 @@ namespace BeachVolley.EditorTools
                 },
             };
             importer.SaveAndReimport();
+            MixamoTPose.Apply(importer);
             foreach (var o in AssetDatabase.LoadAllAssetsAtPath(path))
                 if (o is AnimationClip c && c.name == role) return c;
             return null;
@@ -408,9 +420,55 @@ namespace BeachVolley.EditorTools
             return clips;
         }
 
+        /// <summary>
+        /// Stand To Sit moves the body back onto the seat, but Sitting Idle and Sit To Stand were
+        /// downloaded with the seated body over the origin, so going from one to the next jumped
+        /// the body forward (and back after standing up). Saves copies of those two shifted so they
+        /// start where Stand To Sit ends: the body sits back once and stays there, and standing up
+        /// ends over the origin again.
+        /// </summary>
+        static void AlignSitClips(Dictionary<string, AnimationClip> clips)
+        {
+            if (!clips.TryGetValue("StandToSit", out var down)) return;
+            float end = RootZ(down, down.length);
+            foreach (var role in new[] { "SitIdle", "SitToStand" })
+            {
+                if (!clips.TryGetValue(role, out var clip)) continue;
+                clips[role] = Shifted(clip, end - RootZ(clip, 0f), $"{StoryClipDir}/{role}_Aligned.anim");
+            }
+        }
+
+        static float RootZ(AnimationClip clip, float time)
+        {
+            foreach (var b in AnimationUtility.GetCurveBindings(clip))
+                if (b.propertyName == "RootT.z") return AnimationUtility.GetEditorCurve(clip, b).Evaluate(time);
+            return 0f;
+        }
+
+        static AnimationClip Shifted(AnimationClip source, float dz, string path)
+        {
+            AssetDatabase.DeleteAsset(path);
+            var copy = new AnimationClip { name = source.name, frameRate = source.frameRate };
+            foreach (var b in AnimationUtility.GetCurveBindings(source))
+            {
+                var curve = AnimationUtility.GetEditorCurve(source, b);
+                if (b.propertyName == "RootT.z")
+                {
+                    var keys = curve.keys;
+                    for (int i = 0; i < keys.Length; i++) keys[i].value += dz;
+                    curve.keys = keys;
+                }
+                AnimationUtility.SetEditorCurve(copy, b, curve);
+            }
+            AnimationUtility.SetAnimationClipSettings(copy, AnimationUtility.GetAnimationClipSettings(source));
+            AssetDatabase.CreateAsset(copy, path);
+            return copy;
+        }
+
         static AnimatorController BuildController(out int storyClipCount)
         {
             var story = StoryClips();
+            AlignSitClips(story);
             storyClipCount = story.Count;
             var clips = PlayerClips();
             foreach (var kv in story) clips[kv.Key] = kv.Value;
@@ -500,7 +558,7 @@ namespace BeachVolley.EditorTools
             t.AddCondition(AnimatorConditionMode.If, 0f, name);
             t.duration = 0.15f;
             t.canTransitionToSelf = false;
-            Exit(state, back, 0.25f);
+            Exit(state, back, 0.25f, ClipSpeed.TryGetValue(name, out float speed) ? speed : 1f);
         }
 
         static void Hold(AnimatorController controller, AnimatorStateMachine sm, Dictionary<string, AnimationClip> clips, string name, AnimatorState back)

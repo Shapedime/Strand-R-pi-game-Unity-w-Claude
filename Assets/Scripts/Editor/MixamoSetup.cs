@@ -129,6 +129,7 @@ namespace BeachVolley.EditorTools
                 if (outClips.Count == 0) outClips.Add(Configure(settings[0], name));
                 importer.clipAnimations = outClips.ToArray();
                 importer.SaveAndReimport();
+                MixamoTPose.Apply(importer);
 
                 foreach (var o in AssetDatabase.LoadAllAssetsAtPath(path))
                     if (o is AnimationClip c && !c.name.StartsWith("__preview__"))

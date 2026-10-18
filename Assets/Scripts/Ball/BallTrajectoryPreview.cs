@@ -86,7 +86,7 @@ namespace BeachVolley.Ball
             bool resting = pos.y < groundHeight + VolleyBall.Radius + 0.05f && vel.sqrMagnitude < restSpeed * restSpeed;
             if (resting || ball.Body.isKinematic) { SetVisible(false); return; }
 
-            float awareness = skills != null ? skills.Normalized(SkillType.Awareness) : 0f;
+            float awareness = skills != null ? skills.Normalized(SkillType.CourtAwareness) : 0f;
             float trailTime = Mathf.Lerp(trailTimeRookie, trailTimeMaster, awareness);
             float width = Mathf.Lerp(widthRookie, widthMaster, awareness);
             float alpha = Mathf.Lerp(alphaRookie, alphaMaster, awareness);

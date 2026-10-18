@@ -75,6 +75,9 @@ namespace BeachVolley.Menu
             b.style.borderTopWidth = b.style.borderBottomWidth = b.style.borderLeftWidth = b.style.borderRightWidth = 0;
             SetRadius(b, 8);
             b.SetEnabled(enabled);
+            // Keyboard and gamepad presses go through MenuNav (or the story UI's own keys) only;
+            // UI Toolkit's own focus could otherwise press a second, different button.
+            b.focusable = false;
             if (enabled)
             {
                 b.RegisterCallback<MouseEnterEvent>(_ => { if (!IsSelected(b)) b.style.backgroundColor = ButtonHover; });

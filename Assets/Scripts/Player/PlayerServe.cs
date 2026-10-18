@@ -135,7 +135,7 @@ namespace BeachVolley.Player
                 var target = new Vector3(x + jitter.x, VolleyBall.Radius, side * jumpServeDepth + jitter.y);
                 float netTop = CourtDimensions.NetHeight + VolleyBall.Radius + jumpServeNetClearance;
                 // A mistimed jump serve loses its pace.
-                float pace = Mathf.Lerp(jumpServeMinSpeed, jumpServeSpeed, quality);
+                float pace = Mathf.Lerp(jumpServeMinSpeed, jumpServeSpeed, quality) * skills.Scale(GymSkill.Strength, 1f, 1.2f);
                 velocity = ball.DriveOverNet(origin, target, netTop, pace, jumpServeMinSpeed * 0.8f);
             }
             else

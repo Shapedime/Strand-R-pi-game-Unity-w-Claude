@@ -102,7 +102,6 @@ namespace BeachVolley.CameraRig
             if (target == null) return;
             float dt = Time.deltaTime;
 
-            UpdateCursorLock();
 
             Vector2 look = lookStick.ReadValue<Vector2>() * (stickSpeed * dt);
             if (Cursor.lockState == CursorLockMode.Locked)
@@ -158,23 +157,6 @@ namespace BeachVolley.CameraRig
             if (position.y < minCameraHeight)
                 position.y = minCameraHeight;
             transform.SetPositionAndRotation(position, Quaternion.LookRotation(pivot - position, Vector3.up));
-        }
-
-        static void UpdateCursorLock()
-        {
-            var mouse = Mouse.current;
-            var keyboard = Keyboard.current;
-            if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
-            {
-                Cursor.lockState = CursorLockMode.None;
-                Cursor.visible = true;
-            }
-            else if (mouse != null && mouse.leftButton.wasPressedThisFrame && Cursor.lockState != CursorLockMode.Locked
-                     && !UiPointerGate.IsPointerOverUi)
-            {
-                Cursor.lockState = CursorLockMode.Locked;
-                Cursor.visible = false;
-            }
         }
     }
 }

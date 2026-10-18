@@ -43,9 +43,17 @@ namespace BeachVolley.Story
         Coroutine fakeGesture;
         bool fakeTalking, fakeSitting, seated;
         Transform held;
+        Transform autoProp;         // a bottle or phone made for a gesture (destroyed when it ends)
+        string autoFor;
         Transform heldParent;
         Vector3 heldPos;
         Quaternion heldRot;
+
+        /// <summary>
+        /// How far (m) the sit-down clip carries the hips back: someone about to sit stands this far
+        /// in front of the seat, and their hips end up on it.
+        /// </summary>
+        public const float SitTravel = 0.48f;
 
         public bool IsWalking => walkTarget.HasValue;
         public bool HasRig => animator != null && animator.avatar != null && animator.avatar.isHuman;
@@ -124,6 +132,7 @@ namespace BeachVolley.Story
         public void Gesture(string name)
         {
             if (!acting) return;
+            AutoProp(name);
             if (HasRig && parameters.TryGetValue(name, out var type))
             {
                 if (type == AnimatorControllerParameterType.Trigger) animator.SetTrigger(name);
@@ -143,6 +152,7 @@ namespace BeachVolley.Story
         /// <summary>Ends a held pose started with <see cref="Gesture"/>.</summary>
         public void EndPose(string name)
         {
+            if (autoFor == name) DropAutoProp();
             if (HasRig && parameters.TryGetValue(name, out var type) && type == AnimatorControllerParameterType.Bool)
                 animator.SetBool(name, false);
             if (!HasRig) heldPoses.Remove(name);
@@ -177,28 +187,96 @@ namespace BeachVolley.Story
         }
 
         /// <summary>Puts a prop (phone, bottle, ball) in the right hand until <see cref="Release"/>.</summary>
-        public void Hold(Transform prop, Vector3 localPosition, Vector3 localEuler)
+        public void Hold(Transform prop, Vector3 localPosition, Vector3 localEuler, bool leftHand = false)
         {
             Release();
-            Transform hand = HasRig ? animator.GetBoneTransform(HumanBodyBones.RightHand) : armR;
+            Transform hand = HasRig ? animator.GetBoneTransform(leftHand ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand) : leftHand ? armL : armR;
             if (prop == null || hand == null) return;
             held = prop;
             heldParent = prop.parent;
             heldPos = prop.localPosition;
             heldRot = prop.localRotation;
             prop.SetParent(hand, true);
-            prop.localPosition = HasRig ? localPosition : new Vector3(0f, -0.6f, 0.05f);
-            prop.localRotation = Quaternion.Euler(localEuler);
+            // Offsets are in metres along the hand's axes, whatever scale the rig's bones have
+            // (the cast's models import with different bone scales).
+            Vector3 offset = HasRig ? localPosition : new Vector3(0f, -0.6f, 0.05f);
+            prop.SetPositionAndRotation(hand.position + hand.rotation * offset, hand.rotation * Quaternion.Euler(localEuler));
         }
 
         /// <summary>Puts the held prop back where it came from.</summary>
         public void Release()
         {
             if (held == null) return;
+            if (held == autoProp) { DropAutoProp(); return; }
             held.SetParent(heldParent, false);
             held.localPosition = heldPos;
             held.localRotation = heldRot;
             held = null;
+        }
+
+        // ---------- Props for gestures ----------
+
+        /// <summary>
+        /// Drinking and texting need something in the hand. If the script didn't give the actor a
+        /// prop, a water bottle or a phone appears for the gesture and goes away after it.
+        /// </summary>
+        void AutoProp(string gesture)
+        {
+            if (held != null || !HasRig) return;
+            bool drink = gesture == "Drink", phone = gesture == "Texting";
+            if (!drink && !phone) return;
+            var prop = drink ? MakeProp("Bottle (prop)", PrimitiveType.Cylinder, new Vector3(0.07f, 0.11f, 0.07f), new Color(0.3f, 0.8f, 0.95f))
+                             : MakeProp("Phone (prop)", PrimitiveType.Cube, new Vector3(0.075f, 0.012f, 0.15f), new Color(0.06f, 0.06f, 0.07f));
+            // The Drinking clip raises the left hand: bottle in the left fist. The phone sits flat in
+            // the right palm, screen up (same as the bedroom phone).
+            if (drink) Hold(prop, new Vector3(-0.03f, 0.08f, 0.04f), new Vector3(0f, 0f, -90f), leftHand: true);
+            else Hold(prop, new Vector3(0.05f, 0.08f, 0.03f), new Vector3(0f, 90f, 0f));
+            autoProp = prop;
+            autoFor = gesture;
+            if (drink) StartCoroutine(DropAfterGesture("Drink"));
+        }
+
+        static Material propMaterial;
+
+        Transform MakeProp(string name, PrimitiveType type, Vector3 scale, Color color)
+        {
+            var go = GameObject.CreatePrimitive(type);
+            go.name = name;
+            Destroy(go.GetComponent<Collider>());
+            go.transform.localScale = scale;
+            var r = go.GetComponent<Renderer>();
+            if (propMaterial == null)
+            {
+                var shader = Shader.Find("Universal Render Pipeline/Lit");
+                if (shader == null) shader = r.sharedMaterial.shader;
+                propMaterial = new Material(shader);
+            }
+            var mat = new Material(propMaterial);
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
+            else mat.color = color;
+            r.sharedMaterial = mat;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            return go.transform;
+        }
+
+        /// <summary>Drops the prop once the gesture's clip has played (its length, from the controller).</summary>
+        IEnumerator DropAfterGesture(string clipName)
+        {
+            float length = 3f;
+            if (animator != null && animator.runtimeAnimatorController != null)
+                foreach (var c in animator.runtimeAnimatorController.animationClips)
+                    if (c != null && c.name == clipName) { length = c.length; break; }
+            yield return new WaitForSeconds(length + 0.2f);
+            if (autoFor == clipName) DropAutoProp();
+        }
+
+        void DropAutoProp()
+        {
+            if (autoProp == null) { autoFor = null; return; }
+            if (held == autoProp) held = null;
+            Destroy(autoProp.gameObject);
+            autoProp = null;
+            autoFor = null;
         }
 
         // ---------- Per frame ----------

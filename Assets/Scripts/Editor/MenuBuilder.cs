@@ -54,6 +54,7 @@ namespace BeachVolley.EditorTools
             if (File.Exists(FoundationBuilder.ScenePath)) scenes.Add(new EditorBuildSettingsScene(FoundationBuilder.ScenePath, true));
             if (File.Exists(StoryBuilder.HomeScenePath)) scenes.Add(new EditorBuildSettingsScene(StoryBuilder.HomeScenePath, true));
             if (File.Exists(StoryBuilder.ClubScenePath)) scenes.Add(new EditorBuildSettingsScene(StoryBuilder.ClubScenePath, true));
+            if (File.Exists(StoryBuilder.TownScenePath)) scenes.Add(new EditorBuildSettingsScene(StoryBuilder.TownScenePath, true));
             EditorBuildSettings.scenes = scenes.ToArray();
         }
 

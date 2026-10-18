@@ -28,7 +28,6 @@ namespace BeachVolley.Story
         static readonly Vector3 DaveNetSpot = new Vector3(0.5f, 0f, -1.3f);
         // On the bench seat (the sit clips move the hips back about 0.3 m onto it); Steve sits beside him.
         static readonly Vector3 BenchSpot = new Vector3(-5.95f, 0f, -3.74f);
-        static readonly Vector3 SteveBenchSpot = new Vector3(-5.55f, 0f, -4.38f);
 
         bool struggled;
         int totalGood, totalReps;
@@ -47,47 +46,6 @@ namespace BeachVolley.Story
             yield return FirstConflict();
             yield return OneSmallSuccess();
             yield return GoToScene(HomeScene, "home_end");
-        }
-
-        static Quaternion Facing(Vector3 from, Vector3 to)
-        {
-            Vector3 d = to - from;
-            d.y = 0f;
-            return d.sqrMagnitude > 1e-4f ? Quaternion.LookRotation(d) : Quaternion.identity;
-        }
-
-        static void Put(StoryActor npc, Vector3 at, Vector3 faceTowards)
-        {
-            npc.transform.SetPositionAndRotation(at, Facing(at, faceTowards));
-            npc.LookAt(null);
-        }
-
-        IEnumerator WalkTo(StoryActor npc, Vector3 to)
-        {
-            npc.WalkTo(to);
-            while (npc.IsWalking) yield return null;
-        }
-
-        /// <summary>Over-the-shoulder shot: behind <paramref name="from"/>, looking at <paramref name="at"/>'s face.</summary>
-        void OverShoulder(Transform from, Transform at, float side = 1f)
-        {
-            Vector3 dir = at.position - from.position;
-            dir.y = 0f;
-            dir.Normalize();
-            Vector3 right = Vector3.Cross(Vector3.up, dir);
-            Vector3 pos = from.position + Vector3.up * 1.75f - dir * 1.4f + right * (0.55f * side);
-            cam.FrameOn(pos, at, Vector3.up * 1.55f, 42f);
-        }
-
-        /// <summary>Side-on two-shot of two people talking.</summary>
-        void TwoShot(Transform a, Transform b, float side = 1f, float distance = 3.4f)
-        {
-            Vector3 mid = (a.position + b.position) * 0.5f + Vector3.up * 1.45f;
-            Vector3 dir = b.position - a.position;
-            dir.y = 0f;
-            dir.Normalize();
-            Vector3 n = Vector3.Cross(Vector3.up, dir) * side;
-            cam.Frame(mid + n * distance + Vector3.up * 0.15f, mid, 45f);
         }
 
         // ---------- Scene 3 ----------
@@ -231,6 +189,8 @@ namespace BeachVolley.Story
             drill.HideMarker();
 
             SetFlag("ch1_drill_score", $"{totalGood}/{totalReps}");
+            // Development points for the first session; they're spent from Chapter 2 on.
+            skills.AwardPoints(2, "First training");
             if (totalGood * 2 >= totalReps) Relationship("steve", 1);
         }
 
@@ -264,9 +224,6 @@ namespace BeachVolley.Story
             yield return Narrate("He picks up the ball and tries again.");
             contact.enabled = true;
         }
-
-        static string Grade(int good, int reps, string great, string ok, string rough) =>
-            good * 3 >= reps * 2 ? great : good * 3 >= reps ? ok : rough;
 
         // ---------- Scene 5 ----------
 
@@ -342,8 +299,9 @@ namespace BeachVolley.Story
         {
             yield return FadeOut(0.8f);
             yield return ui.TitleCard("An hour later", "", 1.6f);
-            SitPlayer(BenchSpot, Facing(BenchSpot, Vector3.zero));
-            Put(steve, SteveBenchSpot, SteveBenchSpot + (Vector3.zero - BenchSpot));
+            SitPlayer(BenchSeat(0f), BenchFacing);
+            // Steve stands at the bench beside him; he sits down when the scene asks.
+            steve.transform.SetPositionAndRotation(SeatFront(BenchSeat(-0.75f), BenchFacing), BenchFacing);
             Put(dave, new Vector3(-1.2f, 0f, -2.6f), BenchSpot);
             steve.LookAt(player);
             cam.Frame(BenchSpot + new Vector3(-1.2f, 1.2f, 2.8f), BenchSpot + new Vector3(0.4f, 1.1f, 0f), 45f);
@@ -382,7 +340,7 @@ namespace BeachVolley.Story
             contact.enabled = true;
             cam.Follow();
             playerActor.EndActing();
-            yield return drill.Run(DrillKind.Attacking, 1, null, null, untilSuccess: true);
+            yield return drill.Run(DrillKind.Attacking, 1, (System.Action<int>)null, null, untilSuccess: true);
             contact.enabled = false;
             cutscene = true;
             playerActor.BeginActing();

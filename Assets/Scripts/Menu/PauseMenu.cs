@@ -1,5 +1,6 @@
 using BeachVolley.Core;
 using BeachVolley.Practice;
+using BeachVolley.Skills;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
@@ -19,8 +20,10 @@ namespace BeachVolley.Menu
         [SerializeField] PracticeMenu practiceMenu;
 
         UIDocument document;
-        VisualElement screen;
+        VisualElement screen, skillsScreen;
         InputAction pauseAction;
+        readonly MenuNav nav = new MenuNav();
+        bool cursorShown;
 
         public bool IsOpen { get; private set; }
 
@@ -35,6 +38,7 @@ namespace BeachVolley.Menu
         void OnEnable()
         {
             pauseAction.Enable();
+            nav.Enable();
             Build();
             SetOpen(false);
         }
@@ -42,15 +46,23 @@ namespace BeachVolley.Menu
         void OnDisable()
         {
             pauseAction.Disable();
+            nav.Disable();
             if (IsOpen) Time.timeScale = 1f;
+            if (cursorShown) { CursorControl.Hide(this); cursorShown = false; }
         }
 
-        void OnDestroy() => pauseAction.Dispose();
+        void OnDestroy() { pauseAction.Dispose(); nav.Dispose(); }
 
         void Update()
         {
+            if (IsOpen && !pauseAction.WasPressedThisFrame())
+            {
+                bool skills = skillsScreen != null && skillsScreen.style.display == DisplayStyle.Flex;
+                nav.Update(skills ? skillsScreen : screen);
+            }
             if (!pauseAction.WasPressedThisFrame()) return;
             if (practiceMenu != null && practiceMenu.IsOpen) practiceMenu.SetOpen(false);
+            else if (skillsScreen != null && skillsScreen.style.display == DisplayStyle.Flex) ShowSkills(false);
             else SetOpen(!IsOpen);
         }
 
@@ -58,13 +70,15 @@ namespace BeachVolley.Menu
         {
             IsOpen = open;
             if (screen != null) MenuStyle.Show(screen, open);
+            if (!open && skillsScreen != null) MenuStyle.Show(skillsScreen, false);
             Time.timeScale = open ? 0f : 1f;
             UiPointerGate.MenuOpen = open;
-            if (open)
+            if (open != cursorShown)
             {
-                UnityEngine.Cursor.lockState = CursorLockMode.None;
-                UnityEngine.Cursor.visible = true;
+                if (open) CursorControl.Show(this); else CursorControl.Hide(this);
+                cursorShown = open;
             }
+            nav.Reset();
         }
 
         void Build()
@@ -75,6 +89,7 @@ namespace BeachVolley.Menu
             var panel = MenuStyle.Panel(380);
             panel.Add(MenuStyle.Title("Paused"));
             panel.Add(MenuStyle.Button("Resume", () => SetOpen(false)));
+            panel.Add(MenuStyle.Button("Your skills", () => ShowSkills(true), enabled: FindAnyObjectByType<PlayerSkills>() != null));
             panel.Add(MenuStyle.Button("Practice options", () =>
             {
                 SetOpen(false);
@@ -83,11 +98,54 @@ namespace BeachVolley.Menu
             panel.Add(MenuStyle.Button("Main menu", () =>
             {
                 SetOpen(false);
-                SceneManager.LoadScene(MainMenuScene);
+                SceneLoader.Load(MainMenuScene);
             }));
             panel.Add(MenuStyle.Note("Click the game to take control again after resuming."));
             screen.Add(panel);
             root.Add(screen);
+            skillsScreen = MenuStyle.Screen(dim: true);
+            MenuStyle.Show(skillsScreen, false);
+            root.Add(skillsScreen);
+        }
+
+        /// <summary>Read-only skill levels (points are spent at home in story mode).</summary>
+        void ShowSkills(bool show)
+        {
+            MenuStyle.Show(screen, !show && IsOpen);
+            MenuStyle.Show(skillsScreen, show);
+            nav.Reset();
+            if (!show) return;
+            skillsScreen.Clear();
+            var skills = FindAnyObjectByType<PlayerSkills>();
+            var panel = MenuStyle.Panel(520);
+            panel.Add(MenuStyle.Title("Your skills"));
+            if (skills != null)
+            {
+                foreach (var type in SkillInfo.DisplayOrder)
+                {
+                    int lv = skills.Get(type);
+                    var row = new Label($"{SkillInfo.Name(type)}   <b>{lv}</b>   <color=#5ab0e0>{new string('■', lv)}</color><color=#3a4550>{new string('■', PlayerSkills.MaxLevel - lv)}</color>");
+                    row.enableRichText = true;
+                    row.style.fontSize = 19;
+                    row.style.color = MenuStyle.TextColor;
+                    row.style.marginTop = 3;
+                    panel.Add(row);
+                }
+                panel.Add(MenuStyle.Heading("Gym"));
+                foreach (var type in SkillInfo.GymOrder)
+                {
+                    int lv = skills.Get(type);
+                    var row = new Label($"{SkillInfo.Name(type)}   <b>{lv}</b>   <color=#e0a040>{new string('■', lv)}</color><color=#3a4550>{new string('■', PlayerSkills.MaxLevel - lv)}</color>");
+                    row.enableRichText = true;
+                    row.style.fontSize = 19;
+                    row.style.color = MenuStyle.TextColor;
+                    row.style.marginTop = 3;
+                    panel.Add(row);
+                }
+                panel.Add(MenuStyle.Note($"Unspent development points: {skills.DevPoints}, gym points: {skills.GymPoints}. In story mode you spend them at home."));
+            }
+            panel.Add(MenuStyle.Button("Back", () => ShowSkills(false)));
+            skillsScreen.Add(panel);
         }
     }
 }

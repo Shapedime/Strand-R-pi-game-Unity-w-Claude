@@ -44,7 +44,7 @@ namespace BeachVolley.Player
         [SerializeField] VolleyBall ball;
 
         [Header("Contact zone (player-local)")]
-        [SerializeField] Vector3 zoneCenter = new Vector3(0f, 0.75f, 0.55f);
+        [SerializeField] Vector3 zoneCenter = new Vector3(0f, 0.95f, 0.55f);
         [SerializeField] Vector3 zoneSize = new Vector3(1f, 1.5f, 0.9f);
 
         [Header("Bump")]
@@ -57,7 +57,7 @@ namespace BeachVolley.Player
         [Tooltip("Share of the player's own run speed that leaks into a badly timed bump.")]
         [SerializeField, Range(0f, 1f)] float carryPlayerVelocity = 0.5f;
 
-        [Header("Pass skill at 100 (values above are the 0 baseline)")]
+        [Header("Bump skill at 10 (values above are the level-1 baseline)")]
         [Tooltip("Contact-zone size multiplier: a better passer reaches more balls.")]
         [SerializeField] float passZoneScaleAtMax = 1.4f;
         [SerializeField] float passWindowAtMax = 0.4f;
@@ -65,13 +65,13 @@ namespace BeachVolley.Player
 
         [Header("Timing (bump / set / dig)")]
         [Tooltip("Pressing within this many seconds of the ball reaching the sweet spot is perfect.")]
-        [SerializeField] float perfectWindow = 0.06f;
+        [SerializeField] float perfectWindow = 0.04f;
         [Tooltip("Quality fades from perfect to zero at this timing error (s): bump, set, dig.")]
-        [SerializeField] Vector3 goodWindow = new Vector3(0.2f, 0.18f, 0.22f);
-        [Tooltip("Both windows grow by this factor at skill 100 (Pass / Set / Defense).")]
-        [SerializeField] float windowScaleAtMax = 1.6f;
+        [SerializeField] Vector3 goodWindow = new Vector3(0.14f, 0.13f, 0.16f);
+        [Tooltip("Both windows grow by this factor at level 10 (Bump / Set / Dive).")]
+        [SerializeField] float windowScaleAtMax = 2.3f;
         [Tooltip("Sweet-spot height above the feet (m): bump, set, dig.")]
-        [SerializeField] Vector3 sweetHeight = new Vector3(0.85f, 2.2f, 0.35f);
+        [SerializeField] Vector3 sweetHeight = new Vector3(1.15f, 2.2f, 0.35f);
         [Tooltip("A dive should be pressed this long before the ball reaches dig height (the dash).")]
         [SerializeField] float diveLead = 0.25f;
         [Tooltip("Landing scatter (m) of a pass: perfect timing .. worst timing.")]
@@ -82,11 +82,11 @@ namespace BeachVolley.Player
 
         [Header("Timing (spike / roll / serve)")]
         [Tooltip("At the contact beat, a ball this close (m) to the hitting sweet spot is perfect...")]
-        [SerializeField] float attackPerfectDistance = 0.35f;
+        [SerializeField] float attackPerfectDistance = 0.28f;
         [Tooltip("...and quality fades to zero at this distance.")]
-        [SerializeField] float attackGoodDistance = 1f;
-        [Tooltip("Spike / roll press timing (s), like bump/set/dig: within x of the ideal press is perfect, fading to zero at y. Grows with Attack.")]
-        [SerializeField] Vector2 attackTimingWindow = new Vector2(0.06f, 0.2f);
+        [SerializeField] float attackGoodDistance = 0.8f;
+        [Tooltip("Spike / roll press timing (s), like bump/set/dig: within x of the ideal press is perfect, fading to zero at y. Grows with Spike (Roll for the roll shot).")]
+        [SerializeField] Vector2 attackTimingWindow = new Vector2(0.045f, 0.15f);
 
         [Header("Attack helper")]
         [Tooltip("Assisted jump: in the air you're steered to the ball and LMB/F swings auto-time themselves.")]
@@ -140,7 +140,7 @@ namespace BeachVolley.Player
         [Tooltip("Closer to the middle than this, the set goes left.")]
         [SerializeField] float setMiddleZone = 0.6f;
 
-        [Header("Spike (Attack skill)")]
+        [Header("Spike (Spike skill)")]
         [SerializeField] HitSettings spike = new HitSettings
         {
             zoneCenter = new Vector3(0f, 2.45f, 0.6f), zoneSize = new Vector3(2f, 1.8f, 1.8f),
@@ -158,7 +158,7 @@ namespace BeachVolley.Player
         [Tooltip("Press to strike: matches the contact beat of the SpikeSwing clip.")]
         [SerializeField] float spikeContactDelay = 0.16f;
 
-        [Header("Roll shot (Attack skill)")]
+        [Header("Roll shot (Roll skill)")]
         [Tooltip("Zone is unused: grounded it reaches the set or bump zone, airborne the spike zone.")]
         [SerializeField] HitSettings roll = new HitSettings
         {
@@ -195,7 +195,7 @@ namespace BeachVolley.Player
         [SerializeField] float blockScatterRookie = 1f;
         [SerializeField] float blockScatterMaster = 0.2f;
 
-        [Header("Dive (Defense skill)")]
+        [Header("Dive and pancake (Dive skill)")]
         [Tooltip("The window is the motor's dash + layout, so activeWindow is unused here.")]
         [SerializeField] HitSettings dive = new HitSettings
         {
@@ -206,6 +206,10 @@ namespace BeachVolley.Player
         [SerializeField] float digTargetOffNet = 4f;
         [Tooltip("...peaking this high (world) when perfect, this low when badly timed.")]
         [SerializeField] Vector2 digApex = new Vector2(3.5f, 2.4f);
+        [Tooltip("A dive that meets the ball this low (m above the feet) is a pancake: flat hand on the sand.")]
+        [SerializeField] float pancakeMaxHeight = 0.3f;
+        [Tooltip("A pancake pops the ball up this high (world): badly timed .. perfect.")]
+        [SerializeField] Vector2 pancakeApex = new Vector2(1.3f, 2.8f);
         [Tooltip("How much a dive bends toward where the ball will land (0..1). A small help; skill later.")]
         [SerializeField, Range(0f, 1f)] float diveLockOn = 0.2f;
         [SerializeField] float diveLockOnRange = 5f;
@@ -341,6 +345,18 @@ namespace BeachVolley.Player
 
         /// <summary>Raised with each graded touch: (type, quality 0..1). Story drills use it for praise.</summary>
         public event Action<HitType, float> HitGraded;
+
+        /// <summary>Raised when a dive turns into a pancake save: (quality 0..1).</summary>
+        public event Action<float> Pancaked;
+
+        /// <summary>The last dive that played the ball was a pancake (flat hand on the sand).</summary>
+        public bool LastDiveWasPancake { get; private set; }
+
+        /// <summary>Timing of the last graded touch: negative = early, positive = late, 0 = unknown.</summary>
+        public float LastTimingError { get; private set; }
+
+        /// <summary>Fatigue shrinks the timing windows a little (1 = fresh).</summary>
+        float Fresh => skills != null ? skills.FatigueFactor : 1f;
 
         /// <summary>
         /// Story helper (1 = normal): widens the attack assist's reach, the spike/roll timing window
@@ -490,7 +506,7 @@ namespace BeachVolley.Player
         float GoodWindow(HitType type)
         {
             float w = type == HitType.Set ? goodWindow.y : type == HitType.Dive ? goodWindow.z : goodWindow.x;
-            return w * SkillScale(SkillFor(type), 1f, windowScaleAtMax) * ReceiveFactor(type);
+            return w * SkillScale(SkillFor(type), 1f, windowScaleAtMax) * ReceiveFactor(type) * Fresh;
         }
 
         /// <summary>A hard incoming ball is harder to pass: bump/dig windows shrink with its speed.</summary>
@@ -502,13 +518,13 @@ namespace BeachVolley.Player
         }
 
         static SkillType SkillFor(HitType type) =>
-            type == HitType.Set ? SkillType.Set : type == HitType.Dive ? SkillType.Defense : SkillType.Pass;
+            type == HitType.Set ? SkillType.Set : type == HitType.Dive ? SkillType.Dive : SkillType.Bump;
 
         /// <summary>Touch quality 0..1 from this swing's timing; an unknown timing counts as average.</summary>
         float TimingQuality(HitType type)
         {
             if (!timingKnown) return 0.5f;
-            float perfect = perfectWindow * SkillScale(SkillFor(type), 1f, windowScaleAtMax) * ReceiveFactor(type);
+            float perfect = perfectWindow * SkillScale(SkillFor(type), 1f, windowScaleAtMax) * ReceiveFactor(type) * Fresh;
             float good = Mathf.Max(GoodWindow(type), perfect + 0.01f);
             float e = Mathf.Abs(timingError);
             return e <= perfect ? 1f : Mathf.Clamp01(1f - (e - perfect) / (good - perfect));
@@ -516,6 +532,7 @@ namespace BeachVolley.Player
 
         void ShowTiming(float quality)
         {
+            LastTimingError = timingKnown ? timingError : 0f;
             HitGraded?.Invoke(swing, quality);
             if (!showTimingFeedback || !timingKnown) return;
             if (quality >= 0.9f) Say("Perfect!", new Color(1f, 0.85f, 0.25f));
@@ -561,11 +578,11 @@ namespace BeachVolley.Player
         /// Spike / roll touch quality: the press timing (same kind of window as bump/set/dig), capped by
         /// how close the ball actually is to the sweet spot at contact.
         /// </summary>
-        float AttackHitQuality(Vector3 localSweet)
+        float AttackHitQuality(Vector3 localSweet, SkillType attackSkill = SkillType.Spike)
         {
-            float q = AttackQuality(SkillType.Attack, localSweet);
+            float q = AttackQuality(attackSkill, localSweet);
             if (!attackPressKnown) return q;
-            float scale = SkillScale(SkillType.Attack, 1f, windowScaleAtMax);
+            float scale = SkillScale(attackSkill, 1f, windowScaleAtMax);
             float perfect = attackTimingWindow.x * scale * AssistBoost;
             float good = Mathf.Max(attackTimingWindow.y * scale * AssistBoost, perfect + 0.01f);
             float e = Mathf.Abs(attackPressError);
@@ -819,12 +836,12 @@ namespace BeachVolley.Player
         }
 
         float PassScale(float atZero, float atMax) =>
-            skills != null ? skills.Scale(SkillType.Pass, atZero, atMax) : atZero;
+            skills != null ? skills.Scale(SkillType.Bump, atZero, atMax) : atZero;
 
         float SkillScale(SkillType type, float atZero, float atMax) =>
             skills != null ? skills.Scale(type, atZero, atMax) : atZero;
 
-        /// <summary>The bump contact zone as it is right now (grows with Pass). Player-local.</summary>
+        /// <summary>The bump contact zone as it is right now (grows with Bump). Player-local.</summary>
         public Vector3 CurrentZoneSize => zoneSize * PassScale(1f, passZoneScaleAtMax);
 
         bool BallInZone(HitType type)
@@ -878,9 +895,12 @@ namespace BeachVolley.Player
             {
                 case HitType.Bump: Bump(TimingQuality(type)); break;
                 case HitType.Set: Set(TimingQuality(type)); break;
-                case HitType.Dive: Dig(TimingQuality(type)); break;
+                case HitType.Dive:
+                    if (contactHeight <= pancakeMaxHeight) Pancake(TimingQuality(type));
+                    else Dig(TimingQuality(type));
+                    break;
                 case HitType.Spike: Spike(AttackHitQuality(spike.zoneCenter)); break;
-                case HitType.Roll: Roll(AttackHitQuality(motor.IsGrounded ? set.zoneCenter : spike.zoneCenter)); break;
+                case HitType.Roll: Roll(AttackHitQuality(motor.IsGrounded ? set.zoneCenter : spike.zoneCenter, SkillType.Roll)); break;
                 case HitType.Block: Block(); break;
             }
             // Only controlled passes count for the passing drill.
@@ -930,9 +950,32 @@ namespace BeachVolley.Player
         /// <summary>Dig: pancake the ball back up toward the middle of your half; a late or early one goes low.</summary>
         void Dig(float quality)
         {
+            LastDiveWasPancake = false;
             var target = new Vector3(0f, VolleyBall.Radius, OwnSide * digTargetOffNet);
             ball.Launch(PassTo(target, Mathf.Lerp(digApex.y, digApex.x, quality), quality));
             ShowTiming(quality);
+        }
+
+        /// <summary>
+        /// Pancake: the flat hand under a ball about to hit the sand. It pops up off the hand,
+        /// lower than a dig and toward the middle of your half; timing decides how playable it is.
+        /// </summary>
+        void Pancake(float quality)
+        {
+            LastDiveWasPancake = true;
+            Vector3 p = ball.transform.position;
+            var target = new Vector3(Mathf.Lerp(p.x, 0f, 0.6f), VolleyBall.Radius,
+                OwnSide * Mathf.Lerp(Mathf.Abs(p.z), digTargetOffNet, 0.5f));
+            float apex = Mathf.Lerp(pancakeApex.x, pancakeApex.y, quality);
+            ball.Launch(PassTo(target, apex, quality * 0.85f));
+            LastTimingError = timingKnown ? timingError : 0f;
+            HitGraded?.Invoke(swing, quality);
+            Pancaked?.Invoke(quality);
+            if (showTimingFeedback)
+            {
+                Say(quality >= 0.5f ? "Pancake!" : "Pancake… barely", quality >= 0.5f ? new Color(0.5f, 1f, 0.9f) : new Color(1f, 0.7f, 0.4f));
+                feedbackUntil = Time.time + 0.9f;
+            }
         }
 
         /// <summary>
@@ -961,11 +1004,13 @@ namespace BeachVolley.Player
             float side = FarSide();
             Vector3 fwd = AttackDirection();
             // Aim where the player is facing, kept inside the far court.
-            float scatter = SkillScale(SkillType.Attack, spikeScatterRookie, spikeScatterMaster) + (1f - quality) * 1.6f;
+            float scatter = SkillScale(SkillType.Spike, spikeScatterRookie, spikeScatterMaster) + (1f - quality) * 1.6f;
             Vector2 jitter = Random.insideUnitCircle * scatter;
 
             float deep = Mathf.InverseLerp(fullAttackDepth, downBallDepth, Mathf.Abs(transform.position.z));
-            float maxSpeed = Mathf.Lerp(spikeMinSpeed, spikeSpeed, quality) * Mathf.Lerp(1f, downBallSpeed, deep);
+            // Strength (gym) puts more pace on it.
+            float strength = skills != null ? skills.Scale(GymSkill.Strength, 1f, 1.2f) : 1f;
+            float maxSpeed = Mathf.Lerp(spikeMinSpeed, spikeSpeed, quality) * Mathf.Lerp(1f, downBallSpeed, deep) * strength;
             float minSpeed = Mathf.Min(spikeMinSpeed, maxSpeed) * 0.7f;
             float netY = CourtDimensions.NetHeight + VolleyBall.Radius + netClearance + deep * 0.4f;
 
@@ -983,8 +1028,8 @@ namespace BeachVolley.Player
                 if (pace >= maxSpeed - 0.01f) break;
             }
 
-            float aimErr = SkillScale(SkillType.Attack, spike.aimErrorRookie, spike.aimErrorMaster) + (1f - quality) * 8f;
-            float powerErr = SkillScale(SkillType.Attack, spike.powerErrorRookie, spike.powerErrorMaster);
+            float aimErr = SkillScale(SkillType.Spike, spike.aimErrorRookie, spike.aimErrorMaster) + (1f - quality) * 8f;
+            float powerErr = SkillScale(SkillType.Spike, spike.powerErrorRookie, spike.powerErrorMaster);
             Vector3 horizontal = new Vector3(velocity.x, 0f, velocity.z);
             horizontal = Quaternion.Euler(0f, Random.Range(-aimErr, aimErr), 0f) * horizontal * (1f + Random.Range(-powerErr, powerErr));
             ball.Launch(horizontal + Vector3.up * velocity.y);
@@ -1001,7 +1046,7 @@ namespace BeachVolley.Player
             Vector3 origin = ball.transform.position;
             float side = FarSide();
             float x = AimAcross(origin, AimDirection, side, rollDepth, rollSidelineMargin);
-            float scatter = SkillScale(SkillType.Attack, rollScatterRookie, rollScatterMaster) + (1f - quality) * 1.5f
+            float scatter = SkillScale(SkillType.Roll, rollScatterRookie, rollScatterMaster) + (1f - quality) * 1.5f
                 + Mathf.Min(rollScatterOutsideMax, OutsideCourt() * rollScatterPerMetreOutside);
             Vector2 jitter = Random.insideUnitCircle * scatter;
             float maxDepth = CourtDimensions.SideLength - rollSidelineMargin;

@@ -20,6 +20,7 @@ namespace BeachVolley.Story
     {
         public const string HomeScene = "StoryHome";
         public const string ClubScene = "StoryClub";
+        public const string TownScene = "StoryTown";
         public const string MainMenuScene = "MainMenu";
 
         [SerializeField] protected StoryUI ui;
@@ -38,6 +39,12 @@ namespace BeachVolley.Story
         /// <summary>The chapter's script, from where the current checkpoint says to start.</summary>
         protected abstract IEnumerator Run();
 
+        /// <summary>
+        /// The chapter this director plays. A scene holds the directors of every chapter that uses
+        /// it; only the one matching the save's chapter runs, the others stand down.
+        /// </summary>
+        protected virtual int ChapterNumber => 1;
+
         protected virtual void Awake()
         {
             if (ui == null) ui = FindAnyObjectByType<StoryUI>();
@@ -48,7 +55,8 @@ namespace BeachVolley.Story
                 skills = player.GetComponent<PlayerSkills>();
                 playerActor = player.GetComponent<StoryActor>();
             }
-            foreach (var a in FindObjectsByType<StoryActor>(FindObjectsSortMode.None))
+            // Inactive people too: some only step in on later days.
+            foreach (var a in FindObjectsByType<StoryActor>(FindObjectsInactive.Include))
                 if (!string.IsNullOrEmpty(a.displayName)) cast[a.displayName] = a;
             foreach (var s in FindObjectsByType<CameraShot>(FindObjectsInactive.Include, FindObjectsSortMode.None))
                 shots[s.name.StartsWith("Shot_") ? s.name.Substring(5) : s.name] = s;
@@ -62,6 +70,11 @@ namespace BeachVolley.Story
 
         protected virtual IEnumerator Start()
         {
+            if (StoryState.Chapter != ChapterNumber)
+            {
+                enabled = false;
+                yield break;
+            }
             GameMode.Current = GameModeKind.Story;
             Time.timeScale = 1f;
             // Skills carry across scenes and sessions through the story save.
@@ -74,6 +87,7 @@ namespace BeachVolley.Story
 
         protected virtual void Update()
         {
+            if (ui == null) return;
             if (motor != null) motor.InputLocked = cutscene || ui.IsBusy;
         }
 
@@ -158,7 +172,9 @@ namespace BeachVolley.Story
             if (checkpoint != null) StoryState.Checkpoint(checkpoint);
             else StoryState.Save();
             UiPointerGate.MenuOpen = false;
-            SceneManager.LoadScene(scene);
+            SceneLoader.Load(scene);
+            // Hold here until the scene goes away (the loading screen covers the switch).
+            while (true) yield return null;
         }
 
         protected void PlaceAt(Vector3 position, Quaternion rotation)
@@ -172,22 +188,47 @@ namespace BeachVolley.Story
         protected void PlaceAt(Transform spot) => PlaceAt(spot.position, spot.rotation);
 
         /// <summary>
-        /// Sits the player down with his hips on <paramref name="seat"/> (the seat surface, facing
-        /// away from it). The controller and motor switch off so the bed or bench can't push him away.
+        /// Sits the player down with his hips on <paramref name="seat"/> (facing away from it): he
+        /// stands just in front of it and the clip sits him back onto it. The controller and motor
+        /// switch off so the bed or bench can't push him away.
         /// </summary>
         protected void SitPlayer(Vector3 seat, Quaternion facing)
         {
             if (motor != null) motor.enabled = false;
             var cc = player.GetComponent<CharacterController>();
             if (cc != null) cc.enabled = false;
-            player.SetPositionAndRotation(seat, facing);
+            player.SetPositionAndRotation(SeatFront(seat, facing), facing);
             if (playerActor != null) playerActor.Sit(true);
         }
+
+        /// <summary>Where someone stands so that sitting down puts their hips on <paramref name="seat"/>.</summary>
+        protected static Vector3 SeatFront(Vector3 seat, Quaternion facing) =>
+            seat + facing * Vector3.forward * StoryActor.SitTravel;
+
+        /// <summary>Sits a cast member down with their hips on <paramref name="seat"/>.</summary>
+        protected static void SitNpc(StoryActor npc, Vector3 seat, Quaternion facing)
+        {
+            npc.transform.SetPositionAndRotation(SeatFront(seat, facing), facing);
+            npc.LookAt(null);
+            npc.Sit(true);
+        }
+
+        // The club bench (see StoryBuilder): centred here, turned to face the training court.
+        protected static readonly Vector3 BenchCentre = new Vector3(-6.2f, 0f, -3.9f);
+        protected static readonly Vector3 BenchForward = new Vector3(5.6f, 0f, 3.5f).normalized;
+        protected static Quaternion BenchFacing => Quaternion.LookRotation(BenchForward);
+
+        /// <summary>
+        /// A spot on the club bench for someone's hips, <paramref name="along"/> metres along it
+        /// (positive = to the left as they sit facing the court).
+        /// </summary>
+        protected static Vector3 BenchSeat(float along) =>
+            BenchCentre + Vector3.Cross(Vector3.up, BenchForward) * -along;
 
         protected void SitPlayer(Transform seat) => SitPlayer(seat.position, seat.rotation);
 
         /// <summary>Stands back up and steps forward off the seat, back under the motor's control.</summary>
-        protected IEnumerator StandPlayer(float stepForward = 0.45f)
+        protected IEnumerator StandPlayer(float stepForward = 0.05f)
         {
             if (playerActor != null) playerActor.Sit(false);
             yield return new WaitForSeconds(1f);
@@ -197,12 +238,60 @@ namespace BeachVolley.Story
             if (motor != null) motor.enabled = true;
         }
 
+        // ---------- Staging (people and camera) ----------
+
+        protected static Quaternion Facing(Vector3 from, Vector3 to)
+        {
+            Vector3 d = to - from;
+            d.y = 0f;
+            return d.sqrMagnitude > 1e-4f ? Quaternion.LookRotation(d) : Quaternion.identity;
+        }
+
+        protected static void Put(StoryActor npc, Vector3 at, Vector3 faceTowards)
+        {
+            npc.transform.SetPositionAndRotation(at, Facing(at, faceTowards));
+            npc.LookAt(null);
+        }
+
+        protected static IEnumerator WalkTo(StoryActor npc, Vector3 to)
+        {
+            npc.WalkTo(to);
+            while (npc.IsWalking) yield return null;
+        }
+
+        /// <summary>Over-the-shoulder shot: behind <paramref name="from"/>, looking at <paramref name="at"/>'s face.</summary>
+        protected void OverShoulder(Transform from, Transform at, float side = 1f)
+        {
+            Vector3 dir = at.position - from.position;
+            dir.y = 0f;
+            dir.Normalize();
+            Vector3 right = Vector3.Cross(Vector3.up, dir);
+            Vector3 pos = from.position + Vector3.up * 1.75f - dir * 1.4f + right * (0.55f * side);
+            cam.FrameOn(pos, at, Vector3.up * 1.55f, 42f);
+        }
+
+        /// <summary>Side-on two-shot of two people talking.</summary>
+        protected void TwoShot(Transform a, Transform b, float side = 1f, float distance = 3.4f)
+        {
+            Vector3 mid = (a.position + b.position) * 0.5f + Vector3.up * 1.45f;
+            Vector3 dir = b.position - a.position;
+            dir.y = 0f;
+            dir.Normalize();
+            Vector3 n = Vector3.Cross(Vector3.up, dir) * side;
+            cam.Frame(mid + n * distance + Vector3.up * 0.15f, mid, 45f);
+        }
+
+        /// <summary>Three-tier verdict: two thirds good, one third good, or less.</summary>
+        protected static string Grade(int good, int reps, string great, string ok, string rough) =>
+            good * 3 >= reps * 2 ? great : good * 3 >= reps ? ok : rough;
+
         protected void SetFlag(string key, string value) => StoryState.SetFlag(key, value);
         protected string Flag(string key) => StoryState.Flag(key);
         protected void Relationship(string who, int amount) => StoryState.AddRelationship(who, amount);
 
         /// <summary>The scene a save at this checkpoint should load (used by Continue).</summary>
         public static string SceneFor(string checkpoint) =>
-            checkpoint != null && checkpoint.StartsWith("club") ? ClubScene : HomeScene;
+            checkpoint != null && checkpoint.StartsWith("club") ? ClubScene
+            : checkpoint != null && checkpoint.StartsWith("town") ? TownScene : HomeScene;
     }
 }

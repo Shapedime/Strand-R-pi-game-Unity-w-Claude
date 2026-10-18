@@ -54,13 +54,21 @@ namespace BeachVolley.Player
         [Tooltip("Falls faster than this (m/s) trigger landing recovery.")]
         [SerializeField] float hardLandingSpeed = 3f;
 
-        [Header("Footwork skill (values above are the rookie/0 baseline)")]
-        [Tooltip("Acceleration and deceleration multiplier at Footwork 100.")]
+        [Header("Athleticism skill (values above are the level-1 baseline)")]
+        [Tooltip("Acceleration and deceleration multiplier at Athleticism 10.")]
         [SerializeField] float footworkAccelAtMax = 1.5f;
-        [Tooltip("Turn smoothing time at Footwork 100 (lower = snappier).")]
+        [Tooltip("Turn smoothing time at Athleticism 10 (lower = snappier).")]
         [SerializeField] float footworkTurnTimeAtMax = 0.035f;
-        [Tooltip("Walk/sprint speed multiplier at Footwork 100.")]
+        [Tooltip("Walk/sprint speed multiplier at Athleticism 10.")]
         [SerializeField] float footworkSpeedAtMax = 1.12f;
+
+        [Header("Gym skills")]
+        [Tooltip("Jump height multiplier at Leg Power 1 .. Leg Power 10 (gym).")]
+        [SerializeField] Vector2 jumpingScale = new Vector2(1f, 1.2f);
+        [Tooltip("Acceleration multiplier at Explosiveness 1 .. 10 (gym).")]
+        [SerializeField] Vector2 explosivenessAccel = new Vector2(1f, 1.25f);
+        [Tooltip("Dive get-up and landing recovery time multiplier at Core 1 .. 10 (gym).")]
+        [SerializeField] Vector2 coreRecovery = new Vector2(1f, 0.65f);
 
         [Header("Dive")]
         [SerializeField] float diveSpeed = 7f;
@@ -124,14 +132,18 @@ namespace BeachVolley.Player
         public bool IsGrounded { get; private set; }
         public bool IsSprinting { get; private set; }
         /// <summary>How high a jump started right now would go: more run-up, higher jump.</summary>
-        public float JumpHeightNow => AttackJumpBoost ? approachJumpHeight : Mathf.Lerp(standingJumpHeight, approachJumpHeight,
-            Mathf.InverseLerp(1f, fullApproachSpeed, planarVelocity.magnitude));
+        public float JumpHeightNow => JumpSkill * (AttackJumpBoost ? approachJumpHeight : Mathf.Lerp(standingJumpHeight, approachJumpHeight,
+            Mathf.InverseLerp(1f, fullApproachSpeed, planarVelocity.magnitude)));
+
+        float JumpSkill => skills != null ? skills.Scale(GymSkill.LegPower, jumpingScale.x, jumpingScale.y) : 1f;
+        float CoreFactor => skills != null ? skills.Scale(GymSkill.Core, coreRecovery.x, coreRecovery.y) : 1f;
+        float GetUpTime => diveGetUpTime * CoreFactor;
 
         /// <summary>Upward speed (m/s), negative while falling.</summary>
         public float VerticalVelocity => verticalVelocity;
 
         float DiveElapsed => Time.time - diveStart;
-        float DiveTotal => diveDashTime + diveLayoutTime + diveGetUpTime;
+        float DiveTotal => diveDashTime + diveLayoutTime + GetUpTime;
         /// <summary>From launch until the player is back on their feet.</summary>
         public bool IsDiving => DiveElapsed < DiveTotal;
         /// <summary>Dash and layout: the window where a dig can still be played.</summary>
@@ -147,7 +159,7 @@ namespace BeachVolley.Player
                 if (t >= DiveTotal) return 0f;
                 if (t < diveDashTime) return Mathf.SmoothStep(0f, 1f, t / diveDashTime);
                 if (t < diveDashTime + diveLayoutTime) return 1f;
-                return 1f - Mathf.SmoothStep(0f, 1f, (t - diveDashTime - diveLayoutTime) / diveGetUpTime);
+                return 1f - Mathf.SmoothStep(0f, 1f, (t - diveDashTime - diveLayoutTime) / GetUpTime);
             }
         }
 
@@ -272,7 +284,7 @@ namespace BeachVolley.Player
             {
                 lastGroundedTime = now;
                 if (!wasGrounded && verticalVelocity < -hardLandingSpeed)
-                    landingTimer = landingRecoveryTime;
+                    landingTimer = landingRecoveryTime * CoreFactor;
             }
             if (!locked && jumpAction.WasPressedThisFrame() && !IsDiving)
                 lastJumpPressedTime = now;
@@ -288,10 +300,11 @@ namespace BeachVolley.Player
             bool moving = moveDir.sqrMagnitude > 0.0001f;
             IsSprinting = moving && sprintAction.IsPressed();
 
-            // Better footwork = quicker to get going, quicker to turn, a touch faster.
-            float accelScale = SkillScale(1f, footworkAccelAtMax);
+            // Better athleticism = quicker to get going, quicker to turn, a touch faster.
+            float accelScale = SkillScale(1f, footworkAccelAtMax)
+                * (skills != null ? skills.Scale(GymSkill.Explosiveness, explosivenessAccel.x, explosivenessAccel.y) : 1f);
             float turnTime = SkillScale(turnSmoothTime, footworkTurnTimeAtMax);
-            float speedScale = SkillScale(1f, footworkSpeedAtMax);
+            float speedScale = SkillScale(1f, footworkSpeedAtMax) * (skills != null ? skills.FatigueFactor : 1f);
 
             // Facing priority: a hit snap toward the ball, then the move direction, then (standing
             // still) a gentle turn toward the ball.
@@ -415,7 +428,7 @@ namespace BeachVolley.Player
         }
 
         float SkillScale(float atZero, float atMax) =>
-            skills != null ? skills.Scale(SkillType.Footwork, atZero, atMax) : atZero;
+            skills != null ? skills.Scale(SkillType.Athleticism, atZero, atMax) : atZero;
 
         Vector3 CameraRelative(Vector2 input)
         {

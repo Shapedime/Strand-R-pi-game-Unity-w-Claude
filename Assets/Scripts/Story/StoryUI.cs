@@ -16,7 +16,7 @@ namespace BeachVolley.Story
     /// <see cref="StoryDirector"/> scripts yield on.
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
-    public class StoryUI : MonoBehaviour
+    public partial class StoryUI : MonoBehaviour
     {
         [SerializeField] float charsPerSecond = 48f;
 
@@ -69,7 +69,7 @@ namespace BeachVolley.Story
         }
 
         void OnDisable() { foreach (var a in Actions) a.Disable(); }
-        void OnDestroy() { foreach (var a in Actions) a.Dispose(); }
+        void OnDestroy() { foreach (var a in Actions) a.Dispose(); DisposeExtras(); }
 
         void Update()
         {
@@ -77,6 +77,7 @@ namespace BeachVolley.Story
             if (blockers > 0 && !UiPointerGate.MenuOpen && !Paused) UiPointerGate.MenuOpen = true;
             if (toastLabel != null && toastLabel.style.display == DisplayStyle.Flex && Time.time > toastUntil)
                 MenuStyle.Show(toastLabel, false);
+            UpdateExtras();
         }
 
         // ---------- Layout ----------
@@ -185,6 +186,8 @@ namespace BeachVolley.Story
             card.Add(cardTitle);
             card.Add(cardSubtitle);
 
+            BuildExtras(root);
+
             fade = MenuStyle.Screen(dim: false);
             fade.style.backgroundColor = Color.black;
             fade.style.opacity = 0f;
@@ -192,12 +195,13 @@ namespace BeachVolley.Story
             // The card sits above the fade so it can show over black.
             root.Add(fade);
             root.Add(card);
+            AddOverlays(root);
 
             foreach (var e in new VisualElement[] { objectiveLabel, toastLabel, promptLabel, dialogue, choices, phone, card })
                 MenuStyle.Show(e, false);
         }
 
-        static Label Text(string text, int size, Color color, bool bold = false)
+        internal static Label Text(string text, int size, Color color, bool bold = false)
         {
             var l = new Label(text);
             l.style.fontSize = size;
@@ -207,13 +211,13 @@ namespace BeachVolley.Story
             return l;
         }
 
-        static void Pad(VisualElement e, float h, float v)
+        internal static void Pad(VisualElement e, float h, float v)
         {
             e.style.paddingLeft = e.style.paddingRight = h;
             e.style.paddingTop = e.style.paddingBottom = v;
         }
 
-        static void Round(VisualElement e, float r)
+        internal static void Round(VisualElement e, float r)
         {
             e.style.borderTopLeftRadius = e.style.borderTopRightRadius = r;
             e.style.borderBottomLeftRadius = e.style.borderBottomRightRadius = r;
@@ -221,17 +225,16 @@ namespace BeachVolley.Story
 
         // ---------- Blocking (freezes the player, frees the cursor) ----------
 
-        void Block()
+        internal void Block()
         {
             if (blockers++ == 0)
             {
+                // The cursor stays hidden: dialogue, choices and the phone all work with the keys.
                 UiPointerGate.MenuOpen = true;
-                UnityEngine.Cursor.lockState = CursorLockMode.None;
-                UnityEngine.Cursor.visible = true;
             }
         }
 
-        void Unblock()
+        internal void Unblock()
         {
             blockers = Mathf.Max(0, blockers - 1);
             if (blockers == 0) UiPointerGate.MenuOpen = false;
@@ -252,6 +255,8 @@ namespace BeachVolley.Story
 
         IEnumerator Line(string speaker, string text, bool thought)
         {
+            // A missing line (e.g. a used-up BarkPool) must never freeze the story.
+            if (string.IsNullOrEmpty(text)) yield break;
             Block();
             MenuStyle.Show(dialogue, true);
             MenuStyle.Show(speakerLabel, !string.IsNullOrEmpty(speaker));
@@ -292,6 +297,8 @@ namespace BeachVolley.Story
         IEnumerator ChooseIn(VisualElement container, string[] options, int fontSize)
         {
             Block();
+            // A menu: the pointer shows so the options can be clicked (the keys work too).
+            CursorControl.Show(this);
             container.Clear();
             choiceButtons.Clear();
             chosen = -1;
@@ -332,6 +339,7 @@ namespace BeachVolley.Story
             if (container == choices) MenuStyle.Show(container, false);
             container.Clear();
             choiceButtons.Clear();
+            CursorControl.Hide(this);
             Unblock();
             yield return null;
         }

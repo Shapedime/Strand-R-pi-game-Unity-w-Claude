@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace BeachVolley.Training
 {
-    /// <summary>Floating "Pass +1" style messages whenever a skill gains a point.</summary>
+    /// <summary>Floating "+2 development points" messages whenever training awards points.</summary>
     public class SkillToasts : MonoBehaviour
     {
         [SerializeField] PlayerSkills skills;
@@ -27,16 +27,16 @@ namespace BeachVolley.Training
 
         void OnEnable()
         {
-            if (skills != null) skills.SkillRaised += OnSkillRaised;
+            if (skills != null) skills.PointsAwarded += OnPoints;
         }
 
         void OnDisable()
         {
-            if (skills != null) skills.SkillRaised -= OnSkillRaised;
+            if (skills != null) skills.PointsAwarded -= OnPoints;
         }
 
-        void OnSkillRaised(SkillType type, int value) =>
-            toasts.Add(new Toast { text = $"{type} +1", born = Time.time });
+        void OnPoints(int amount, string reason) =>
+            toasts.Add(new Toast { text = amount == 1 ? "+1 development point" : $"+{amount} development points", born = Time.time });
 
         void OnGUI()
         {

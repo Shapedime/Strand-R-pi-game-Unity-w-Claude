@@ -9,6 +9,9 @@ namespace BeachVolley.Story
     /// Volleyball that only looks real: a prop ball flown along scripted arcs between figures on a
     /// court, with no physics or AI. Used for the TV match and the players warming up at the club.
     /// Positions are in this court's local space (net on z = 0, near team on −z).
+    /// When a story scene takes one of the players away (puts them somewhere else, or hides them)
+    /// while the rally runs, a substitute steps in for them, so nobody keeps playing a ball from
+    /// across the club. <see cref="ResetPositions"/> brings the originals back.
     /// </summary>
     public class ScriptedPlay : MonoBehaviour
     {
@@ -18,9 +21,13 @@ namespace BeachVolley.Story
         [SerializeField] Transform[] farTeam = new Transform[0];
         [SerializeField] bool loopOnStart = true;
         [SerializeField] float tempo = 1f;
+        [Tooltip("Inactive extras who step in when a player is taken away mid-rally.")]
+        [SerializeField] Transform[] substitutes = new Transform[0];
 
         Coroutine loop;
         Vector3[] homes;
+        Transform[] originals;      // who started in each slot (near team first, then far)
+        Vector3[] expected;         // where the rally last put each slot's player
 
         /// <summary>Raised with each point of the scripted final ("20 : 19").</summary>
         public event Action<string> Score;
@@ -30,6 +37,82 @@ namespace BeachVolley.Story
             homes = new Vector3[nearTeam.Length + farTeam.Length];
             for (int i = 0; i < nearTeam.Length; i++) homes[i] = nearTeam[i].localPosition;
             for (int i = 0; i < farTeam.Length; i++) homes[nearTeam.Length + i] = farTeam[i].localPosition;
+            originals = new Transform[homes.Length];
+            for (int i = 0; i < homes.Length; i++) originals[i] = Member(i);
+            expected = (Vector3[])homes.Clone();
+            foreach (var sub in substitutes) if (sub != null) sub.gameObject.SetActive(false);
+        }
+
+        // ---------- Slots and substitutes ----------
+
+        int Slots => nearTeam.Length + farTeam.Length;
+        Transform Member(int i) => i < nearTeam.Length ? nearTeam[i] : farTeam[i - nearTeam.Length];
+        void SetMember(int i, Transform t) { if (i < nearTeam.Length) nearTeam[i] = t; else farTeam[i - nearTeam.Length] = t; }
+
+        int SlotOf(Transform who)
+        {
+            for (int i = 0; i < Slots; i++) if (Member(i) == who) return i;
+            return -1;
+        }
+
+        /// <summary>Moves a rally player and remembers where, so a move by anyone else stands out.</summary>
+        void Place(Transform who, Vector3 local)
+        {
+            who.localPosition = local;
+            int i = SlotOf(who);
+            if (i >= 0) expected[i] = local;
+        }
+
+        void LateUpdate()
+        {
+            if (loop == null || expected == null) return;
+            for (int i = 0; i < Slots; i++)
+            {
+                var m = Member(i);
+                Vector3 d = m.localPosition - expected[i];
+                d.y = 0f;
+                if (m.gameObject.activeInHierarchy && d.sqrMagnitude < 0.75f * 0.75f) continue;
+                if (!Substitute(i))
+                {
+                    // Nobody to bring in: stop rather than have someone play a ball from miles away.
+                    StopLoop();
+                    return;
+                }
+            }
+        }
+
+        bool Substitute(int slot)
+        {
+            foreach (var sub in substitutes)
+            {
+                if (sub == null || sub.gameObject.activeSelf || SlotOf(sub) >= 0) continue;
+                var gone = Member(slot);
+                sub.localPosition = expected[slot];
+                sub.localRotation = gone.parent == transform ? gone.localRotation : Quaternion.LookRotation(slot < nearTeam.Length ? Vector3.forward : Vector3.back);
+                sub.gameObject.SetActive(true);
+                SetMember(slot, sub);
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>Puts every original player back in their slot (substitutes leave).</summary>
+        void RestoreOriginals(bool onlyIfNearHome)
+        {
+            for (int i = 0; i < Slots; i++)
+            {
+                var o = originals[i];
+                if (Member(i) == o || o == null) continue;
+                if (onlyIfNearHome)
+                {
+                    Vector3 d = o.localPosition - homes[i];
+                    d.y = 0f;
+                    if (!o.gameObject.activeInHierarchy || d.sqrMagnitude > 1.5f * 1.5f) continue;
+                }
+                Member(i).gameObject.SetActive(false);
+                SetMember(i, o);
+                expected[i] = o.localPosition;
+            }
         }
 
         void Start() { if (loopOnStart) StartLoop(); }
@@ -37,6 +120,8 @@ namespace BeachVolley.Story
         public void StartLoop()
         {
             StopLoop();
+            if (originals != null) RestoreOriginals(onlyIfNearHome: true);
+            for (int i = 0; expected != null && i < Slots; i++) expected[i] = Member(i).localPosition;
             loop = StartCoroutine(RallyLoop());
         }
 
@@ -76,10 +161,10 @@ namespace BeachVolley.Story
             local.y = start.y;
             for (float t = 0f; t < duration; t += Time.deltaTime)
             {
-                who.localPosition = Vector3.Lerp(start, local, Mathf.SmoothStep(0f, 1f, t / duration));
+                Place(who, Vector3.Lerp(start, local, Mathf.SmoothStep(0f, 1f, t / duration)));
                 yield return null;
             }
-            who.localPosition = local;
+            Place(who, local);
         }
 
         IEnumerator Jump(Transform who, float height, float duration)
@@ -88,10 +173,10 @@ namespace BeachVolley.Story
             Vector3 start = who.localPosition;
             for (float t = 0f; t < duration; t += Time.deltaTime)
             {
-                who.localPosition = start + Vector3.up * (height * Mathf.Sin(Mathf.PI * t / duration));
+                Place(who, start + Vector3.up * (height * Mathf.Sin(Mathf.PI * t / duration)));
                 yield return null;
             }
-            who.localPosition = start;
+            Place(who, start);
         }
 
         void Go(IEnumerator routine) => StartCoroutine(routine);
@@ -157,7 +242,7 @@ namespace BeachVolley.Story
             Score?.Invoke("20 : 19");
 
             // Serve from behind the far baseline.
-            server.localPosition = new Vector3(1.5f, 0f, 8.6f);
+            Place(server, new Vector3(1.5f, 0f, 8.6f));
             Hit(server, HitType.Spike);
             yield return new WaitForSeconds(0.35f / tempo);
             yield return Arc(Hands(server, 2.3f), new Vector3(-1f, 0.9f, -5f), 5.5f, 1.5f);
@@ -204,8 +289,8 @@ namespace BeachVolley.Story
             ResetPositions();
             var attacker = nearTeam[0];
             var setter = nearTeam.Length > 1 ? nearTeam[1] : nearTeam[0];
-            setter.localPosition = new Vector3(0.5f, 0f, -1.4f);
-            attacker.localPosition = new Vector3(-1.5f, 0f, -4.5f);
+            Place(setter, new Vector3(0.5f, 0f, -1.4f));
+            Place(attacker, new Vector3(-1.5f, 0f, -4.5f));
             ball.position = W(Hands(setter, 2.2f));
             yield return new WaitForSeconds(0.4f);
             Go(Move(attacker, new Vector3(-1.4f, 0f, -1.9f), 0.9f));
@@ -217,10 +302,16 @@ namespace BeachVolley.Story
             yield return Arc(new Vector3(1.5f, 0.16f, 3.6f), new Vector3(2.4f, 0.16f, 5.4f), 0.9f, 0.5f);
         }
 
+        /// <summary>Everyone back to their spot, the original players included (substitutes leave).</summary>
         public void ResetPositions()
         {
-            for (int i = 0; i < nearTeam.Length; i++) nearTeam[i].localPosition = homes[i];
-            for (int i = 0; i < farTeam.Length; i++) farTeam[i].localPosition = homes[nearTeam.Length + i];
+            if (originals != null) RestoreOriginals(onlyIfNearHome: false);
+            for (int i = 0; i < Slots; i++)
+            {
+                var m = Member(i);
+                if (!m.gameObject.activeSelf) m.gameObject.SetActive(true);
+                Place(m, homes[i]);
+            }
         }
     }
 }

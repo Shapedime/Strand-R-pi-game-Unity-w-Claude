@@ -102,9 +102,9 @@ namespace BeachVolley.Training
         /// <summary>Skills a drill trains: main first, then the side skills.</summary>
         public static SkillType[] TrainedSkills(Drill d) => d switch
         {
-            Drill.Footwork => new[] { SkillType.Footwork, SkillType.Awareness },
-            Drill.Passing => new[] { SkillType.Pass, SkillType.Defense, SkillType.Awareness },
-            _ => new[] { SkillType.Serve, SkillType.Attack, SkillType.Awareness },
+            Drill.Footwork => new[] { SkillType.Athleticism, SkillType.CourtAwareness },
+            Drill.Passing => new[] { SkillType.Bump, SkillType.Dive, SkillType.CourtAwareness },
+            _ => new[] { SkillType.Serve, SkillType.Spike, SkillType.CourtAwareness },
         };
 
         void Awake()
@@ -187,7 +187,7 @@ namespace BeachVolley.Training
 
         public bool IsUnlocked(Drill d) => d switch
         {
-            Drill.Passing => completedPractices >= passingAfterPractices || skills.Get(SkillType.Pass) >= passingAtPassSkill,
+            Drill.Passing => completedPractices >= passingAfterPractices || skills.Get(SkillType.Bump) >= passingAtPassSkill,
             Drill.Serve => completedPractices >= serveAfterPractices || skills.Get(SkillType.Serve) >= serveAtServeSkill,
             _ => true,
         };
@@ -265,9 +265,9 @@ namespace BeachVolley.Training
                 {
                     if (marker != null) marker.transform.Rotate(0f, 90f * Time.deltaTime, 0f);
                     Vector3 p = skills.transform.position;
-                    float reach = Scale(SkillType.Footwork, markerReach);
+                    float reach = Scale(SkillType.Athleticism, markerReach);
                     if (new Vector2(p.x - markerPos.x, p.z - markerPos.z).sqrMagnitude <= reach * reach) EndRep(true, "Made it!");
-                    else if (elapsed > Scale(SkillType.Footwork, markerTime)) EndRep(false, "Too slow - still learning");
+                    else if (elapsed > Scale(SkillType.Athleticism, markerTime)) EndRep(false, "Too slow - still learning");
                     break;
                 }
                 case Drill.Passing:
@@ -299,7 +299,7 @@ namespace BeachVolley.Training
         {
             if (state != State.Running || !repActive || drill != Drill.Passing) return;
             if (contactHeight < lowContactHeight)
-                skills.AddXp(SkillType.Defense, sideXp * 2f);
+                skills.AddXp(SkillType.Dive, sideXp * 2f);
             EndRep(true, "Nice touch!");
         }
 
@@ -323,8 +323,8 @@ namespace BeachVolley.Training
         {
             var trained = TrainedSkills(drill);
             skills.AddXp(trained[0], clean ? successXp : failXp);
-            skills.AddXp(SkillType.Awareness, sideXp);
-            if (clean && drill == Drill.Serve) skills.AddXp(SkillType.Attack, sideXp);
+            skills.AddXp(SkillType.CourtAwareness, sideXp);
+            if (clean && drill == Drill.Serve) skills.AddXp(SkillType.Spike, sideXp);
             if (clean)
             {
                 cleanReps++;
@@ -368,7 +368,7 @@ namespace BeachVolley.Training
                 : new Vector3(1.8f, 1.5f, -1.4f);
 
             Transform player = skills.transform;
-            Vector2 scatter = Random.insideUnitCircle * Scale(SkillType.Pass, tossScatter);
+            Vector2 scatter = Random.insideUnitCircle * Scale(SkillType.Bump, tossScatter);
             Vector3 target = player.position + player.forward * 0.5f + new Vector3(scatter.x, tossTargetHeight, scatter.y);
 
             ball.Place(origin);

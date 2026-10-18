@@ -13,12 +13,15 @@ MonoBehaviour:
   m_Name: RookieSkills
   m_EditorClassIdentifier: Assembly-CSharp::BeachVolley.Skills.SkillProfile
   note: 'Rookie at city beginner training: never played before, shows up anyway.'
-  serve: 6
-  pass: 9
-  set: 5
-  attack: 7
-  block: 5
-  defense: 8
-  footwork: 10
-  awareness: 12
+  serve: 1
+  bump: 1
+  set: 1
+  spike: 1
+  roll: 1
+  dive: 1
+  block: 1
+  courtAwareness: 1
+  stamina: 1
+  athleticism: 1
+  jumping: 1
   enjoyment: 10
